@@ -3,7 +3,7 @@
 import * as React from 'react'
 import {
   Plus, MoreHorizontal, Edit, Trash2, Shield, UserCog,
-  CheckCircle2, XCircle, Clock, Users, UserCheck, UserX,
+  CheckCircle2, XCircle, Clock, Users, UserCheck, UserX, Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
@@ -31,32 +31,51 @@ import { DataTable, Column } from '@/components/ui/data-table'
 import { toast } from 'sonner'
 import { useLang } from '@/contexts/lang-context'
 import { useAuth } from '@/contexts/auth-context'
-import {
-  getPendingUsers, updatePendingUser,
-  type PendingUser, type UserRole,
-} from '@/lib/pending-users'
 import { useFirestoreCollection } from '@/hooks/use-firestore'
-import { COLLECTIONS } from '@/types'
+import { User, COLLECTIONS } from '@/types'
+import { doc, updateDoc, setDoc, deleteDoc, collection } from 'firebase/firestore'
+import { getFirestoreDb, isFirebaseConfigured } from '@/lib/firebase'
+import { createUserWithEmailAndPassword } from 'firebase/auth'
+import { getFirebaseAuth } from '@/lib/firebase'
 
-/* ─── Static demo users ─── */
-const STATIC_USERS = [
-  { id: '1', nameAr: 'أحمد محمد',   name: 'Ahmed Mohammed',  email: 'ahmed@hospital.com',   role: 'admin'      as UserRole, status: 'active'   as const, department: 'الإدارة',          createdAt: '2023-06-15', lastLogin: '2024-01-15T10:30:00Z' },
-  { id: '2', nameAr: 'سارة أحمد',   name: 'Sara Ahmed',      email: 'sara@hospital.com',    role: 'head_nurse' as UserRole, status: 'active'   as const, department: 'العناية المركزة',   createdAt: '2023-08-20', lastLogin: '2024-01-15T09:15:00Z' },
-  { id: '3', nameAr: 'محمد علي',    name: 'Mohammed Ali',    email: 'mali@hospital.com',    role: 'supervisor' as UserRole, status: 'active'   as const, department: 'الطوارئ',           createdAt: '2023-09-10', lastLogin: '2024-01-14T22:45:00Z' },
-  { id: '4', nameAr: 'فاطمة حسن',   name: 'Fatima Hassan',   email: 'fhassan@hospital.com', role: 'staff'      as UserRole, status: 'inactive' as const, department: 'الباطنية',          createdAt: '2023-11-01', lastLogin: '2024-01-10T14:20:00Z' },
-  { id: '5', nameAr: 'خالد عبدالله', name: 'Khaled Abdullah', email: 'khaled@hospital.com',  role: 'staff'      as UserRole, status: 'active'   as const, department: 'الجراحة',           createdAt: '2023-12-15', lastLogin: '2024-01-15T08:00:00Z' },
+type UserRole = 'super_admin' | 'admin' | 'head_nurse' | 'supervisor' | 'nurse' | 'doctor' | 'receptionist' | 'staff'
+type UserStatus = 'active' | 'pending_approval' | 'inactive' | 'suspended'
+
+const DEPARTMENTS = [
+  { value: 'admin', labelAr: 'الإدارة', labelEn: 'Administration' },
+  { value: 'icu', labelAr: 'العناية المركزة', labelEn: 'ICU' },
+  { value: 'er', labelAr: 'الطوارئ', labelEn: 'Emergency' },
+  { value: 'internal', labelAr: 'الباطنية', labelEn: 'Internal Medicine' },
+  { value: 'surgery', labelAr: 'الجراحة', labelEn: 'Surgery' },
+  { value: 'pediatrics', labelAr: 'الأطفال', labelEn: 'Pediatrics' },
+  { value: 'obgyn', labelAr: 'النساء والولادة', labelEn: 'OB/GYN' },
+  { value: 'orthopedics', labelAr: 'العظام', labelEn: 'Orthopedics' },
 ]
 
-const DEPARTMENTS = ['الإدارة','العناية المركزة','الطوارئ','الباطنية','الجراحة','الأطفال','النساء والولادة','العظام']
-
 const ROLE_LABELS: Record<UserRole, { ar: string; en: string; color: string }> = {
-  admin:      { ar: 'مدير النظام',   en: 'System Admin',  color: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400' },
-  head_nurse: { ar: 'رئيس التمريض', en: 'Head Nurse',     color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400' },
-  supervisor: { ar: 'مشرف',         en: 'Supervisor',     color: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400' },
-  staff:      { ar: 'موظف',         en: 'Staff',          color: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400' },
+  super_admin: { ar: 'المدير العام', en: 'Super Admin', color: 'bg-purple-100 text-purple-700 border-purple-200 dark:bg-purple-950 dark:text-purple-400' },
+  admin: { ar: 'مدير النظام', en: 'System Admin', color: 'bg-red-100 text-red-700 border-red-200 dark:bg-red-950 dark:text-red-400' },
+  head_nurse: { ar: 'رئيس التمريض', en: 'Head Nurse', color: 'bg-blue-100 text-blue-700 border-blue-200 dark:bg-blue-950 dark:text-blue-400' },
+  supervisor: { ar: 'مشرف', en: 'Supervisor', color: 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400' },
+  nurse: { ar: 'ممرض/ة', en: 'Nurse', color: 'bg-teal-100 text-teal-700 border-teal-200 dark:bg-teal-950 dark:text-teal-400' },
+  doctor: { ar: 'طبيب/ة', en: 'Doctor', color: 'bg-green-100 text-green-700 border-green-200 dark:bg-green-950 dark:text-green-400' },
+  receptionist: { ar: 'موظف استقبال', en: 'Receptionist', color: 'bg-cyan-100 text-cyan-700 border-cyan-200 dark:bg-cyan-950 dark:text-cyan-400' },
+  staff: { ar: 'موظف', en: 'Staff', color: 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400' },
 }
 
-/* ─── Approve dialog ─── */
+interface PendingUser {
+  id: string
+  name: string
+  nameAr: string
+  email: string
+  photoURL?: string
+  status: UserStatus
+  requestedAt: string
+  role?: UserRole
+  department?: string
+}
+
+/* Approve dialog */
 function ApproveDialog({
   entry,
   isAr,
@@ -68,23 +87,36 @@ function ApproveDialog({
 }) {
   const { user: currentUser } = useAuth()
   const [role, setRole] = React.useState<UserRole>('staff')
-  const [dept, setDept] = React.useState('الإدارة')
+  const [dept, setDept] = React.useState('admin')
   const [open, setOpen] = React.useState(false)
+  const [loading, setLoading] = React.useState(false)
 
   React.useEffect(() => { if (entry) setOpen(true) }, [entry])
 
   const approve = async () => {
-    if (!entry) return
-    await updatePendingUser(entry.id, {
-      status: 'approved',
-      role,
-      department: dept,
-      reviewedAt: new Date().toISOString(),
-      reviewedBy: currentUser?.nameAr || 'Admin',
-    })
-    toast.success(isAr ? `تمت الموافقة على ${entry.name}` : `${entry.name} approved`)
-    setOpen(false)
-    onDone()
+    if (!entry || !isFirebaseConfigured()) return
+    setLoading(true)
+    
+    try {
+      const db = getFirestoreDb()
+      await updateDoc(doc(db, COLLECTIONS.USERS, entry.id), {
+        status: 'active',
+        role,
+        department: dept,
+        approvedAt: new Date().toISOString(),
+        approvedBy: currentUser?.id || 'admin',
+        updatedAt: new Date().toISOString(),
+      })
+      
+      toast.success(isAr ? `تمت الموافقة على ${entry.name}` : `${entry.name} approved`)
+      setOpen(false)
+      onDone()
+    } catch (error) {
+      console.error('[Users] Error approving user:', error)
+      toast.error(isAr ? 'حدث خطأ أثناء الموافقة' : 'Error approving user')
+    } finally {
+      setLoading(false)
+    }
   }
 
   return (
@@ -120,30 +152,14 @@ function ApproveDialog({
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="admin">
-                    <span className="flex items-center gap-2">
-                      <Shield className="h-4 w-4 text-red-500" />
-                      {isAr ? 'مدير النظام' : 'System Admin'}
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="head_nurse">
-                    <span className="flex items-center gap-2">
-                      <UserCog className="h-4 w-4 text-blue-500" />
-                      {isAr ? 'رئيس التمريض' : 'Head Nurse'}
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="supervisor">
-                    <span className="flex items-center gap-2">
-                      <UserCheck className="h-4 w-4 text-amber-500" />
-                      {isAr ? 'مشرف' : 'Supervisor'}
-                    </span>
-                  </SelectItem>
-                  <SelectItem value="staff">
-                    <span className="flex items-center gap-2">
-                      <Users className="h-4 w-4 text-slate-500" />
-                      {isAr ? 'موظف' : 'Staff'}
-                    </span>
-                  </SelectItem>
+                  {(Object.keys(ROLE_LABELS) as UserRole[]).map((r) => (
+                    <SelectItem key={r} value={r}>
+                      <span className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${ROLE_LABELS[r].color.split(' ')[0]}`} />
+                        {isAr ? ROLE_LABELS[r].ar : ROLE_LABELS[r].en}
+                      </span>
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -155,7 +171,7 @@ function ApproveDialog({
                 <SelectTrigger><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {DEPARTMENTS.map((d) => (
-                    <SelectItem key={d} value={d}>{d}</SelectItem>
+                    <SelectItem key={d.value} value={d.value}>{isAr ? d.labelAr : d.labelEn}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
@@ -163,19 +179,23 @@ function ApproveDialog({
 
             {/* Role description */}
             <div className={`p-3 rounded-lg border text-sm ${ROLE_LABELS[role].color}`}>
-              {role === 'admin'      && (isAr ? 'صلاحية كاملة على جميع أقسام النظام' : 'Full access to all system modules')}
+              {role === 'super_admin' && (isAr ? 'صلاحية كاملة على جميع أقسام النظام بدون استثناء' : 'Full access to all system modules without exception')}
+              {role === 'admin' && (isAr ? 'صلاحية كاملة على جميع أقسام النظام' : 'Full access to all system modules')}
               {role === 'head_nurse' && (isAr ? 'إدارة الكادر والأقسام وإنشاء التقارير' : 'Manage staff, departments, and reports')}
               {role === 'supervisor' && (isAr ? 'الإشراف على الشيفت وإنشاء تقارير محدودة' : 'Shift supervision and limited reporting')}
-              {role === 'staff'      && (isAr ? 'وصول للوحة التحكم ومهام الموظف فقط' : 'Dashboard access and staff tasks only')}
+              {role === 'nurse' && (isAr ? 'وصول لوحدات التمريض والمرضى' : 'Access to nursing and patient modules')}
+              {role === 'doctor' && (isAr ? 'وصول للوحدات الطبية والمرضى' : 'Access to medical and patient modules')}
+              {role === 'receptionist' && (isAr ? 'وصول لوحدات الاستقبال والمواعيد' : 'Access to reception and appointments')}
+              {role === 'staff' && (isAr ? 'وصول للوحة التحكم ومهام الموظف فقط' : 'Dashboard access and staff tasks only')}
             </div>
           </div>
         )}
         <DialogFooter className="gap-2">
-          <Button variant="outline" onClick={() => setOpen(false)}>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={loading}>
             {isAr ? 'إلغاء' : 'Cancel'}
           </Button>
-          <Button onClick={approve} className="bg-green-600 hover:bg-green-700 gap-2">
-            <CheckCircle2 className="h-4 w-4" />
+          <Button onClick={approve} className="bg-green-600 hover:bg-green-700 gap-2" disabled={loading}>
+            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
             {isAr ? 'موافقة وتفعيل' : 'Approve & Activate'}
           </Button>
         </DialogFooter>
@@ -184,114 +204,221 @@ function ApproveDialog({
   )
 }
 
-/* ═══════════════════════════════════════════════════════════ */
+/* Main Page */
 export default function UsersPage() {
-  const { data: firestoreUsers, loading: firestoreUsersLoading, add: addToUser, update: updateUserDoc, remove: removeUserDoc } = useFirestoreCollection(
+  const { lang } = useLang()
+  const { user: currentUser } = useAuth()
+  const isAr = lang === 'ar'
+
+  // Firestore users collection
+  const { data: firestoreUsers, loading: usersLoading, update: updateUser, remove: removeUser, add: addUser } = useFirestoreCollection<User>(
     COLLECTIONS.USERS,
     [],
     []
   )
 
-  const { lang } = useLang()
-  const { user: currentUser } = useAuth()
-  const isAr = lang === 'ar'
-
-  const [staticUsers, setStaticUsers] = React.useState(STATIC_USERS)
-  const [pendingList, setPendingList] = React.useState<PendingUser[]>([])
   const [roleFilter, setRoleFilter] = React.useState('all')
   const [isAddOpen, setIsAddOpen] = React.useState(false)
   const [rejectTarget, setRejectTarget] = React.useState<PendingUser | null>(null)
   const [approveTarget, setApproveTarget] = React.useState<PendingUser | null>(null)
-  const [editTarget, setEditTarget] = React.useState<(typeof STATIC_USERS)[0] | null>(null)
+  const [editTarget, setEditTarget] = React.useState<User | null>(null)
   const [editRole, setEditRole] = React.useState<UserRole>('staff')
   const [editDept, setEditDept] = React.useState('')
-  const [newUser, setNewUser] = React.useState({ name: '', nameAr: '', email: '', role: 'staff' as UserRole, department: 'الإدارة' })
+  const [newUser, setNewUser] = React.useState({ 
+    name: '', 
+    nameAr: '', 
+    email: '', 
+    password: '',
+    employeeCode: '',
+    role: 'staff' as UserRole, 
+    department: 'admin' 
+  })
+  const [addLoading, setAddLoading] = React.useState(false)
 
-  /* Refresh pending list */
-  const refreshPending = React.useCallback(async () => {
-    const list = await getPendingUsers()
-    setPendingList(list.filter((u) => u.status === 'pending'))
-  }, [])
+  // Split users into active and pending
+  const activeUsers = firestoreUsers.filter(u => u.status === 'active')
+  const pendingUsers = firestoreUsers.filter(u => u.status === 'pending_approval')
 
-  React.useEffect(() => {
-    refreshPending()
-    const interval = setInterval(refreshPending, 5000)
-    return () => clearInterval(interval)
-  }, [refreshPending])
+  // Filter active users by role
+  const filteredUsers = roleFilter === 'all' 
+    ? activeUsers 
+    : activeUsers.filter(u => u.role === roleFilter)
 
-  /* Reject */
+  // Reject user
   const rejectUser = async (entry: PendingUser) => {
-    await updatePendingUser(entry.id, {
-      status: 'rejected',
-      reviewedAt: new Date().toISOString(),
-      reviewedBy: currentUser?.nameAr || 'Admin',
-    })
-    toast.error(isAr ? `تم رفض ${entry.name}` : `${entry.name} rejected`)
-    refreshPending()
-    setRejectTarget(null)
+    if (!isFirebaseConfigured()) return
+    
+    try {
+      const db = getFirestoreDb()
+      await updateDoc(doc(db, COLLECTIONS.USERS, entry.id), {
+        status: 'inactive',
+        rejectedAt: new Date().toISOString(),
+        rejectedBy: currentUser?.id || 'admin',
+        updatedAt: new Date().toISOString(),
+      })
+      
+      toast.error(isAr ? `تم رفض ${entry.name}` : `${entry.name} rejected`)
+      setRejectTarget(null)
+    } catch (error) {
+      console.error('[Users] Error rejecting user:', error)
+      toast.error(isAr ? 'حدث خطأ أثناء الرفض' : 'Error rejecting user')
+    }
   }
 
-  /* Add new user */
-  const addUser = () => {
-    if (!newUser.name || !newUser.email) {
-      toast.error(isAr ? 'أدخل الاسم والبريد الإلكتروني' : 'Enter name and email')
+  // Add new user
+  const handleAddUser = async () => {
+    if (!newUser.name || !newUser.email || !newUser.password) {
+      toast.error(isAr ? 'أدخل الاسم والبريد الإلكتروني وكلمة المرور' : 'Enter name, email, and password')
       return
     }
-    const u = { ...newUser, nameAr: newUser.nameAr || newUser.name, id: Date.now().toString(), status: 'active' as const, createdAt: new Date().toISOString().split('T')[0], lastLogin: new Date().toISOString() }
-    setStaticUsers((prev) => [...prev, u])
-    setIsAddOpen(false)
-    setNewUser({ name: '', nameAr: '', email: '', role: 'staff', department: 'الإدارة' })
-    toast.success(isAr ? 'تمت إضافة المستخدم' : 'User added')
+    
+    if (!isFirebaseConfigured()) {
+      toast.error(isAr ? 'Firebase غير متصل' : 'Firebase not connected')
+      return
+    }
+    
+    setAddLoading(true)
+    try {
+      const auth = getFirebaseAuth()
+      const db = getFirestoreDb()
+      
+      // Create Firebase Auth account
+      const result = await createUserWithEmailAndPassword(auth, newUser.email, newUser.password)
+      
+      // Create Firestore user document
+      const userData: Partial<User> = {
+        id: result.user.uid,
+        name: newUser.name,
+        nameAr: newUser.nameAr || newUser.name,
+        email: newUser.email,
+        employeeCode: newUser.employeeCode.toUpperCase() || `EMP${Date.now().toString().slice(-6)}`,
+        role: newUser.role,
+        roleId: '',
+        department: newUser.department,
+        departmentId: '',
+        status: 'active',
+        phone: '',
+        hireDate: new Date().toISOString().split('T')[0],
+        mustChangePassword: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+        createdBy: currentUser?.id || 'admin',
+      }
+      
+      await setDoc(doc(db, COLLECTIONS.USERS, result.user.uid), userData)
+      
+      toast.success(isAr ? 'تم إضافة المستخدم بنجاح' : 'User added successfully')
+      setIsAddOpen(false)
+      setNewUser({ name: '', nameAr: '', email: '', password: '', employeeCode: '', role: 'staff', department: 'admin' })
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+      console.error('[Users] Error adding user:', error)
+      toast.error(isAr ? 'حدث خطأ أثناء الإضافة' : 'Error adding user', { description: errorMessage })
+    } finally {
+      setAddLoading(false)
+    }
   }
 
-  /* Edit role */
-  const saveEditRole = () => {
-    if (!editTarget) return
-    setStaticUsers((prev) => prev.map((u) => u.id === editTarget.id ? { ...u, role: editRole, department: editDept || u.department } : u))
-    toast.success(isAr ? 'تم تعديل الصلاحية' : 'Role updated')
-    setEditTarget(null)
+  // Edit role
+  const saveEditRole = async () => {
+    if (!editTarget || !isFirebaseConfigured()) return
+    
+    try {
+      const db = getFirestoreDb()
+      await updateDoc(doc(db, COLLECTIONS.USERS, editTarget.id), {
+        role: editRole,
+        department: editDept || editTarget.department,
+        updatedAt: new Date().toISOString(),
+      })
+      
+      toast.success(isAr ? 'تم تعديل الصلاحية' : 'Role updated')
+      setEditTarget(null)
+    } catch (error) {
+      console.error('[Users] Error updating role:', error)
+      toast.error(isAr ? 'حدث خطأ أثناء التعديل' : 'Error updating role')
+    }
   }
 
-  /* Toggle active */
-  const toggleStatus = (id: string) => {
-    setStaticUsers((prev) => prev.map((u) => u.id === id ? { ...u, status: u.status === 'active' ? 'inactive' : 'active' } : u))
+  // Toggle status
+  const toggleStatus = async (user: User) => {
+    if (!isFirebaseConfigured()) return
+    
+    const newStatus = user.status === 'active' ? 'inactive' : 'active'
+    try {
+      const db = getFirestoreDb()
+      await updateDoc(doc(db, COLLECTIONS.USERS, user.id), {
+        status: newStatus,
+        updatedAt: new Date().toISOString(),
+      })
+      toast.success(isAr ? 'تم تحديث الحالة' : 'Status updated')
+    } catch (error) {
+      console.error('[Users] Error toggling status:', error)
+    }
   }
 
-  const filteredUsers = staticUsers.filter((u) => roleFilter === 'all' || u.role === roleFilter)
+  // Delete user
+  const handleDeleteUser = async (user: User) => {
+    if (!isFirebaseConfigured()) return
+    
+    try {
+      const db = getFirestoreDb()
+      // Soft delete - mark as deleted instead of actually removing
+      await updateDoc(doc(db, COLLECTIONS.USERS, user.id), {
+        status: 'deleted' as UserStatus,
+        deletedAt: new Date().toISOString(),
+        deletedBy: currentUser?.id || 'admin',
+      })
+      toast.success(isAr ? 'تم حذف المستخدم' : 'User deleted')
+    } catch (error) {
+      console.error('[Users] Error deleting user:', error)
+      toast.error(isAr ? 'حدث خطأ أثناء الحذف' : 'Error deleting user')
+    }
+  }
 
-  /* Columns for approved users table */
-  type StaticUser = (typeof STATIC_USERS)[0]
-  const userColumns: Column<StaticUser>[] = [
+  // Columns for users table
+  const userColumns: Column<User>[] = [
     {
       key: 'name',
       header: isAr ? 'المستخدم' : 'User',
       cell: (row) => (
         <div className="flex items-center gap-3">
           <Avatar className="h-9 w-9">
+            {row.avatar && <AvatarImage src={row.avatar} />}
             <AvatarFallback className="bg-primary/10 text-primary font-bold text-sm">
-              {row.nameAr.charAt(0)}
+              {(row.nameAr || row.name || 'U').charAt(0)}
             </AvatarFallback>
           </Avatar>
           <div>
-            <p className="font-medium text-sm">{row.nameAr}</p>
+            <p className="font-medium text-sm">{isAr ? row.nameAr : row.name}</p>
             <p className="text-xs text-muted-foreground">{row.email}</p>
           </div>
         </div>
       ),
     },
     {
+      key: 'employeeCode',
+      header: isAr ? 'كود الموظف' : 'Employee Code',
+      cell: (row) => <span className="font-mono text-sm">{row.employeeCode || '-'}</span>,
+    },
+    {
       key: 'role',
       header: isAr ? 'الدور' : 'Role',
-      cell: (row) => (
-        <Badge variant="outline" className={ROLE_LABELS[row.role].color}>
-          {isAr ? ROLE_LABELS[row.role].ar : ROLE_LABELS[row.role].en}
-        </Badge>
-      ),
+      cell: (row) => {
+        const roleConfig = ROLE_LABELS[row.role as UserRole] || ROLE_LABELS.staff
+        return (
+          <Badge variant="outline" className={roleConfig.color}>
+            {isAr ? roleConfig.ar : roleConfig.en}
+          </Badge>
+        )
+      },
     },
     {
       key: 'department',
       header: isAr ? 'القسم' : 'Department',
-      cell: (row) => <span className="text-sm text-muted-foreground">{row.department}</span>,
+      cell: (row) => {
+        const dept = DEPARTMENTS.find(d => d.value === row.department)
+        return <span className="text-sm text-muted-foreground">{dept ? (isAr ? dept.labelAr : dept.labelEn) : row.department}</span>
+      },
     },
     {
       key: 'status',
@@ -311,11 +438,11 @@ export default function UsersPage() {
             <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={() => { setEditTarget(row); setEditRole(row.role); setEditDept(row.department) }}>
+            <DropdownMenuItem onClick={() => { setEditTarget(row); setEditRole(row.role as UserRole); setEditDept(row.department) }}>
               <Shield className="h-4 w-4 ml-2" />
               {isAr ? 'تغيير الصلاحية' : 'Change Role'}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toggleStatus(row.id)}>
+            <DropdownMenuItem onClick={() => toggleStatus(row)}>
               {row.status === 'active'
                 ? <><UserX className="h-4 w-4 ml-2" />{isAr ? 'تعطيل الحساب' : 'Deactivate'}</>
                 : <><UserCheck className="h-4 w-4 ml-2" />{isAr ? 'تفعيل الحساب' : 'Activate'}</>}
@@ -323,7 +450,7 @@ export default function UsersPage() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
-              onClick={() => setStaticUsers((prev) => prev.filter((u) => u.id !== row.id))}
+              onClick={() => handleDeleteUser(row)}
             >
               <Trash2 className="h-4 w-4 ml-2" />
               {isAr ? 'حذف' : 'Delete'}
@@ -333,6 +460,14 @@ export default function UsersPage() {
       ),
     },
   ]
+
+  if (usersLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-[400px]">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-6">
@@ -370,6 +505,14 @@ export default function UsersPage() {
                 <Input type="email" value={newUser.email} onChange={(e) => setNewUser({ ...newUser, email: e.target.value })} placeholder="user@hospital.com" dir="ltr" />
               </div>
               <div className="space-y-2">
+                <Label>{isAr ? 'كلمة المرور' : 'Password'}</Label>
+                <Input type="password" value={newUser.password} onChange={(e) => setNewUser({ ...newUser, password: e.target.value })} placeholder="********" dir="ltr" />
+              </div>
+              <div className="space-y-2">
+                <Label>{isAr ? 'كود الموظف' : 'Employee Code'}</Label>
+                <Input value={newUser.employeeCode} onChange={(e) => setNewUser({ ...newUser, employeeCode: e.target.value.toUpperCase() })} placeholder="EMP001" dir="ltr" />
+              </div>
+              <div className="space-y-2">
                 <Label>{isAr ? 'الدور' : 'Role'}</Label>
                 <Select value={newUser.role} onValueChange={(v) => setNewUser({ ...newUser, role: v as UserRole })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
@@ -384,13 +527,15 @@ export default function UsersPage() {
                 <Label>{isAr ? 'القسم' : 'Department'}</Label>
                 <Select value={newUser.department} onValueChange={(v) => setNewUser({ ...newUser, department: v })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
-                  <SelectContent>{DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                  <SelectContent>{DEPARTMENTS.map((d) => <SelectItem key={d.value} value={d.value}>{isAr ? d.labelAr : d.labelEn}</SelectItem>)}</SelectContent>
                 </Select>
               </div>
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setIsAddOpen(false)}>{isAr ? 'إلغاء' : 'Cancel'}</Button>
-              <Button onClick={addUser}>{isAr ? 'إضافة' : 'Add'}</Button>
+              <Button onClick={handleAddUser} disabled={addLoading}>
+                {addLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : (isAr ? 'إضافة' : 'Add')}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
@@ -399,10 +544,10 @@ export default function UsersPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: isAr ? 'إجمالي المستخدمين' : 'Total Users',  val: staticUsers.length,                                    icon: UserCog,   bg: 'bg-primary/10',     ic: 'text-primary' },
-          { label: isAr ? 'نشط' : 'Active',                      val: staticUsers.filter((u) => u.status === 'active').length, icon: UserCheck, bg: 'bg-green-100 dark:bg-green-950', ic: 'text-green-600' },
-          { label: isAr ? 'بانتظار الموافقة' : 'Pending',        val: pendingList.length,                                    icon: Clock,     bg: 'bg-amber-100 dark:bg-amber-950', ic: 'text-amber-600' },
-          { label: isAr ? 'مدراء' : 'Admins',                    val: staticUsers.filter((u) => u.role === 'admin').length,   icon: Shield,    bg: 'bg-red-100 dark:bg-red-950',     ic: 'text-red-600' },
+          { label: isAr ? 'إجمالي المستخدمين' : 'Total Users', val: firestoreUsers.length, icon: UserCog, bg: 'bg-primary/10', ic: 'text-primary' },
+          { label: isAr ? 'نشط' : 'Active', val: activeUsers.length, icon: UserCheck, bg: 'bg-green-100 dark:bg-green-950', ic: 'text-green-600' },
+          { label: isAr ? 'بانتظار الموافقة' : 'Pending', val: pendingUsers.length, icon: Clock, bg: 'bg-amber-100 dark:bg-amber-950', ic: 'text-amber-600' },
+          { label: isAr ? 'مدراء' : 'Admins', val: firestoreUsers.filter((u) => u.role === 'admin' || u.role === 'super_admin').length, icon: Shield, bg: 'bg-red-100 dark:bg-red-950', ic: 'text-red-600' },
         ].map(({ label, val, icon: Icon, bg, ic }) => (
           <Card key={label}>
             <CardContent className="pt-5 pb-5">
@@ -426,18 +571,18 @@ export default function UsersPage() {
           <TabsTrigger value="users" className="gap-2">
             <Users className="h-4 w-4" />
             {isAr ? 'المستخدمون' : 'Users'}
-            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{staticUsers.length}</Badge>
+            <Badge variant="secondary" className="ml-1 h-5 px-1.5 text-xs">{activeUsers.length}</Badge>
           </TabsTrigger>
           <TabsTrigger value="pending" className="gap-2">
             <Clock className="h-4 w-4" />
             {isAr ? 'طلبات الموافقة' : 'Approval Requests'}
-            {pendingList.length > 0 && (
-              <Badge variant="destructive" className="ml-1 h-5 px-1.5 text-xs animate-pulse">{pendingList.length}</Badge>
+            {pendingUsers.length > 0 && (
+              <Badge variant="destructive" className="ml-1 h-5 px-1.5 text-xs animate-pulse">{pendingUsers.length}</Badge>
             )}
           </TabsTrigger>
         </TabsList>
 
-        {/* ── Users Tab ── */}
+        {/* Users Tab */}
         <TabsContent value="users" className="space-y-4">
           <Card>
             <CardContent className="pt-5">
@@ -468,9 +613,9 @@ export default function UsersPage() {
           </Card>
         </TabsContent>
 
-        {/* ── Pending Tab ── */}
+        {/* Pending Tab */}
         <TabsContent value="pending" className="space-y-4">
-          {pendingList.length === 0 ? (
+          {pendingUsers.length === 0 ? (
             <Card>
               <CardContent className="py-16 flex flex-col items-center gap-3 text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-green-100 dark:bg-green-950">
@@ -484,21 +629,21 @@ export default function UsersPage() {
             </Card>
           ) : (
             <div className="space-y-3">
-              {pendingList.map((entry) => (
+              {pendingUsers.map((entry) => (
                 <Card key={entry.id} className="border-amber-200 dark:border-amber-800 shadow-sm">
                   <CardContent className="py-4">
                     <div className="flex flex-col sm:flex-row sm:items-center gap-4">
                       {/* User info */}
                       <div className="flex items-center gap-3 flex-1 min-w-0">
                         <Avatar className="h-11 w-11 shrink-0">
-                          {entry.photoURL && <img src={entry.photoURL} alt="" className="rounded-full" />}
+                          {entry.avatar && <AvatarImage src={entry.avatar} />}
                           <AvatarFallback className="bg-teal-100 text-teal-700 font-bold text-base">
-                            {entry.name.charAt(0).toUpperCase()}
+                            {(entry.nameAr || entry.name || 'U').charAt(0).toUpperCase()}
                           </AvatarFallback>
                         </Avatar>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <p className="font-semibold text-sm">{entry.name}</p>
+                            <p className="font-semibold text-sm">{entry.nameAr || entry.name}</p>
                             <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950 dark:text-amber-400 text-[10px] gap-1">
                               <Clock className="h-3 w-3" />
                               {isAr ? 'بانتظار الموافقة' : 'Pending'}
@@ -506,7 +651,7 @@ export default function UsersPage() {
                           </div>
                           <p className="text-xs text-muted-foreground truncate">{entry.email}</p>
                           <p className="text-xs text-muted-foreground mt-0.5">
-                            {isAr ? 'طلب في:' : 'Requested:'} {new Date(entry.requestedAt).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+                            {isAr ? 'طلب في:' : 'Requested:'} {new Date(entry.createdAt).toLocaleString(isAr ? 'ar-EG' : 'en-US', { dateStyle: 'medium', timeStyle: 'short' })}
                           </p>
                         </div>
                       </div>
@@ -516,7 +661,15 @@ export default function UsersPage() {
                         <Button
                           size="sm"
                           className="bg-green-600 hover:bg-green-700 gap-1.5"
-                          onClick={() => setApproveTarget(entry)}
+                          onClick={() => setApproveTarget({ 
+                            id: entry.id, 
+                            name: entry.name, 
+                            nameAr: entry.nameAr,
+                            email: entry.email, 
+                            photoURL: entry.avatar,
+                            status: 'pending_approval',
+                            requestedAt: entry.createdAt,
+                          })}
                         >
                           <CheckCircle2 className="h-4 w-4" />
                           {isAr ? 'موافقة' : 'Approve'}
@@ -525,7 +678,15 @@ export default function UsersPage() {
                           size="sm"
                           variant="outline"
                           className="border-red-300 text-red-600 hover:bg-red-50 dark:hover:bg-red-950 gap-1.5"
-                          onClick={() => setRejectTarget(entry)}
+                          onClick={() => setRejectTarget({ 
+                            id: entry.id, 
+                            name: entry.name, 
+                            nameAr: entry.nameAr,
+                            email: entry.email, 
+                            photoURL: entry.avatar,
+                            status: 'pending_approval',
+                            requestedAt: entry.createdAt,
+                          })}
                         >
                           <XCircle className="h-4 w-4" />
                           {isAr ? 'رفض' : 'Reject'}
@@ -540,14 +701,14 @@ export default function UsersPage() {
         </TabsContent>
       </Tabs>
 
-      {/* ── Approve dialog ── */}
+      {/* Approve dialog */}
       <ApproveDialog
         entry={approveTarget}
         isAr={isAr}
-        onDone={() => { setApproveTarget(null); refreshPending() }}
+        onDone={() => setApproveTarget(null)}
       />
 
-      {/* ── Reject confirm ── */}
+      {/* Reject confirm */}
       <AlertDialog open={!!rejectTarget} onOpenChange={() => setRejectTarget(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -570,12 +731,12 @@ export default function UsersPage() {
         </AlertDialogContent>
       </AlertDialog>
 
-      {/* ── Edit role dialog ── */}
+      {/* Edit role dialog */}
       <Dialog open={!!editTarget} onOpenChange={() => setEditTarget(null)}>
         <DialogContent className="sm:max-w-sm">
           <DialogHeader>
             <DialogTitle>{isAr ? 'تغيير الصلاحية' : 'Change Role'}</DialogTitle>
-            <DialogDescription>{editTarget?.nameAr} — {editTarget?.email}</DialogDescription>
+            <DialogDescription>{editTarget?.nameAr || editTarget?.name} - {editTarget?.email}</DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
@@ -593,7 +754,7 @@ export default function UsersPage() {
               <Label>{isAr ? 'القسم' : 'Department'}</Label>
               <Select value={editDept} onValueChange={setEditDept}>
                 <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>{DEPARTMENTS.map((d) => <SelectItem key={d} value={d}>{d}</SelectItem>)}</SelectContent>
+                <SelectContent>{DEPARTMENTS.map((d) => <SelectItem key={d.value} value={d.value}>{isAr ? d.labelAr : d.labelEn}</SelectItem>)}</SelectContent>
               </Select>
             </div>
           </div>

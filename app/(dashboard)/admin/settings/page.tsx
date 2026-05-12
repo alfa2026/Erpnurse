@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Badge } from '@/components/ui/badge'
 import { Slider } from '@/components/ui/slider'
 import { toast } from 'sonner'
+import { useLang } from '@/contexts/lang-context'
 import { useFirestoreCollection } from '@/hooks/use-firestore'
 import { COLLECTIONS } from '@/types'
 
@@ -36,31 +37,42 @@ interface SettingsCategory {
   description: string
 }
 
-const categories: SettingsCategory[] = [
-  { id: 'general', label: 'الإعدادات العامة', icon: Settings, description: 'معلومات المستشفى والهوية' },
-  { id: 'security', label: 'الأمان', icon: Shield, description: 'كلمات المرور والجلسات' },
-  { id: 'authentication', label: 'المصادقة', icon: Key, description: 'طرق تسجيل الدخول' },
-  { id: 'notifications', label: 'الإشعارات', icon: Bell, description: 'التنبيهات والإشعارات' },
-  { id: 'attendance', label: 'الحضور', icon: Clock, description: 'قواعد الحضور والانصراف' },
-  { id: 'scheduling', label: 'الجدولة', icon: Calendar, description: 'إعدادات المناوبات' },
-  { id: 'users', label: 'المستخدمون', icon: Users, description: 'الأدوار والصلاحيات' },
-  { id: 'appearance', label: 'المظهر', icon: Palette, description: 'الثيم والألوان' },
-  { id: 'backup', label: 'النسخ والنظام', icon: Database, description: 'النسخ الاحتياطي والصيانة' },
-  { id: 'features', label: 'الوحدات', icon: ToggleLeft, description: 'تفعيل/تعطيل الوحدات' },
+interface SettingsCategoryConfig {
+  id: string
+  labelAr: string
+  labelEn: string
+  icon: React.ElementType
+  descriptionAr: string
+  descriptionEn: string
+}
+
+const categoriesConfig: SettingsCategoryConfig[] = [
+  { id: 'general', labelAr: 'الإعدادات العامة', labelEn: 'General', icon: Settings, descriptionAr: 'معلومات المستشفى والهوية', descriptionEn: 'Hospital info and identity' },
+  { id: 'security', labelAr: 'الأمان', labelEn: 'Security', icon: Shield, descriptionAr: 'كلمات المرور والجلسات', descriptionEn: 'Passwords and sessions' },
+  { id: 'authentication', labelAr: 'المصادقة', labelEn: 'Authentication', icon: Key, descriptionAr: 'طرق تسجيل الدخول', descriptionEn: 'Login methods' },
+  { id: 'notifications', labelAr: 'الإشعارات', labelEn: 'Notifications', icon: Bell, descriptionAr: 'التنبيهات والإشعارات', descriptionEn: 'Alerts and notifications' },
+  { id: 'attendance', labelAr: 'الحضور', labelEn: 'Attendance', icon: Clock, descriptionAr: 'قواعد الحضور والانصراف', descriptionEn: 'Check-in/out rules' },
+  { id: 'scheduling', labelAr: 'الجدولة', labelEn: 'Scheduling', icon: Calendar, descriptionAr: 'إعدادات المناوبات', descriptionEn: 'Shift settings' },
+  { id: 'users', labelAr: 'المستخدمون', labelEn: 'Users', icon: Users, descriptionAr: 'الأدوار والصلاحيات', descriptionEn: 'Roles and permissions' },
+  { id: 'appearance', labelAr: 'المظهر', labelEn: 'Appearance', icon: Palette, descriptionAr: 'الثيم والألوان', descriptionEn: 'Theme and colors' },
+  { id: 'backup', labelAr: 'النسخ والنظام', labelEn: 'Backup', icon: Database, descriptionAr: 'النسخ الاحتياطي والصيانة', descriptionEn: 'Backup and maintenance' },
+  { id: 'features', labelAr: 'الوحدات', labelEn: 'Features', icon: ToggleLeft, descriptionAr: 'تفعيل/تعطيل الوحدات', descriptionEn: 'Enable/disable modules' },
 ]
 
 export default function SettingsPage() {
+  const { lang } = useLang()
+  const isAr = lang === 'ar'
   const [hasChanges, setHasChanges] = React.useState(false)
   const [activeTab, setActiveTab] = React.useState('general')
 
   // General Settings
   const [general, setGeneral] = React.useState({
-    hospitalName: '\u0645\u0633\u062a\u0634\u0641\u0649 \u0627\u0644\u0645\u0645\u0644\u0643\u0629',
+    hospitalName: 'مستشفى المملكة',
     hospitalNameEn: 'Kingdom Hospital',
     logo: '',
     contactEmail: 'info@hospital.com',
     contactPhone: '920012345',
-    address: '\u0627\u0644\u0631\u064a\u0627\u0636\u060c \u0627\u0644\u0645\u0645\u0644\u0643\u0629 \u0627\u0644\u0639\u0631\u0628\u064a\u0629 \u0627\u0644\u0633\u0639\u0648\u062f\u064a\u0629',
+    address: 'الرياض، المملكة العربية السعودية',
     addressEn: 'Riyadh, Saudi Arabia',
     language: 'ar',
     timezone: 'Asia/Riyadh',
@@ -205,7 +217,7 @@ export default function SettingsPage() {
 
   const handleSave = () => {
     // In production, save to Firestore
-    toast.success('\u062a\u0645 \u062d\u0641\u0638 \u0627\u0644\u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0628\u0646\u062c\u0627\u062d')
+    toast.success(isAr ? 'تم حفظ الإعدادات بنجاح' : 'Settings saved successfully')
     setHasChanges(false)
   }
 
@@ -216,14 +228,14 @@ export default function SettingsPage() {
         <div>
           <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
             <Settings className="h-6 w-6" />
-            \u0645\u0631\u0643\u0632 \u0627\u0644\u0625\u0639\u062f\u0627\u062f\u0627\u062a
+            {isAr ? 'مركز الإعدادات' : 'Settings Center'}
           </h1>
-          <p className="text-muted-foreground">\u0625\u062f\u0627\u0631\u0629 \u062c\u0645\u064a\u0639 \u0625\u0639\u062f\u0627\u062f\u0627\u062a \u0627\u0644\u0646\u0638\u0627\u0645 \u0645\u0646 \u0645\u0643\u0627\u0646 \u0648\u0627\u062d\u062f</p>
+          <p className="text-muted-foreground">{isAr ? 'إدارة جميع إعدادات النظام من مكان واحد' : 'Manage all system settings in one place'}</p>
         </div>
         {hasChanges && (
           <Button onClick={handleSave} size="lg">
             <Save className="h-4 w-4 ml-2" />
-            \u062d\u0641\u0638 \u062c\u0645\u064a\u0639 \u0627\u0644\u062a\u063a\u064a\u064a\u0631\u0627\u062a
+            {isAr ? 'حفظ جميع التغييرات' : 'Save All Changes'}
           </Button>
         )}
       </div>
@@ -231,10 +243,10 @@ export default function SettingsPage() {
       {/* Settings Tabs */}
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
         <TabsList className="grid grid-cols-2 sm:grid-cols-5 lg:grid-cols-10 h-auto gap-1 p-1">
-          {categories.map((cat) => (
+          {categoriesConfig.map((cat) => (
             <TabsTrigger key={cat.id} value={cat.id} className="flex flex-col items-center gap-1 py-2 px-1 text-xs">
               <cat.icon className="h-4 w-4" />
-              <span className="truncate max-w-full">{cat.label}</span>
+              <span className="truncate max-w-full">{isAr ? cat.labelAr : cat.labelEn}</span>
             </TabsTrigger>
           ))}
         </TabsList>

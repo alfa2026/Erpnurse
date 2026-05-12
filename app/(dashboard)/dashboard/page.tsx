@@ -32,15 +32,15 @@ import { useFirestoreCollection } from '@/hooks/use-firestore'
 
 // Fallback data when Firestore is empty or not configured
 const FALLBACK_DEPARTMENTS: Department[] = [
-  { id: 'icu3', name: 'ICU 3rd', nameAr: '\u0627\u0644\u0639\u0646\u0627\u064a\u0629 3', category: 'medical', code: 'ICU3', beds: 15, capacity: 15, currentOccupancy: 7, staffCount: 5, isActive: true, createdAt: '', updatedAt: '' },
-  { id: 'icu4', name: 'ICU 4th', nameAr: '\u0627\u0644\u0639\u0646\u0627\u064a\u0629 4', category: 'medical', code: 'ICU4', beds: 6, capacity: 6, currentOccupancy: 2, staffCount: 1, isActive: true, createdAt: '', updatedAt: '' },
-  { id: 'ccu', name: 'CCU', nameAr: '\u0627\u0644\u0642\u0644\u0628', category: 'medical', code: 'CCU', beds: 11, capacity: 11, currentOccupancy: 2, staffCount: 2, isActive: true, createdAt: '', updatedAt: '' },
-  { id: 'er', name: 'ER', nameAr: '\u0627\u0644\u0637\u0648\u0627\u0631\u0626', category: 'medical', code: 'ER', beds: 11, capacity: 11, currentOccupancy: 29, staffCount: 3, isActive: true, createdAt: '', updatedAt: '' },
-  { id: 'nicu', name: 'NICU', nameAr: '\u062d\u062f\u064a\u062b\u064a \u0627\u0644\u0648\u0644\u0627\u062f\u0629', category: 'medical', code: 'NICU', beds: 2, capacity: 2, currentOccupancy: 0, staffCount: 1, isActive: true, createdAt: '', updatedAt: '' },
-  { id: 'picu', name: 'PICU', nameAr: '\u0623\u0637\u0641\u0627\u0644 \u0627\u0644\u0639\u0646\u0627\u064a\u0629', category: 'medical', code: 'PICU', beds: 4, capacity: 4, currentOccupancy: 3, staffCount: 1, isActive: true, createdAt: '', updatedAt: '' },
-  { id: 'f8', name: '8th Floor', nameAr: '\u0627\u0644\u0637\u0627\u0628\u0642 8', category: 'medical', code: 'F8', beds: 17, capacity: 17, currentOccupancy: 2, staffCount: 1, isActive: true, createdAt: '', updatedAt: '' },
-  { id: 'f9', name: '9th Floor', nameAr: '\u0627\u0644\u0637\u0627\u0628\u0642 9', category: 'medical', code: 'F9', beds: 17, capacity: 17, currentOccupancy: 9, staffCount: 2, isActive: true, createdAt: '', updatedAt: '' },
-  { id: 'f11', name: '11th Floor', nameAr: '\u0627\u0644\u0637\u0627\u0628\u0642 11', category: 'medical', code: 'F11', beds: 14, capacity: 14, currentOccupancy: 1, staffCount: 1, isActive: true, createdAt: '', updatedAt: '' },
+  { id: 'icu3', name: 'ICU 3rd', nameAr: 'العناية 3', category: 'medical', code: 'ICU3', beds: 15, capacity: 15, currentOccupancy: 7, staffCount: 5, isActive: true, createdAt: '', updatedAt: '' },
+  { id: 'icu4', name: 'ICU 4th', nameAr: 'العناية 4', category: 'medical', code: 'ICU4', beds: 6, capacity: 6, currentOccupancy: 2, staffCount: 1, isActive: true, createdAt: '', updatedAt: '' },
+  { id: 'ccu', name: 'CCU', nameAr: 'القلب', category: 'medical', code: 'CCU', beds: 11, capacity: 11, currentOccupancy: 2, staffCount: 2, isActive: true, createdAt: '', updatedAt: '' },
+  { id: 'er', name: 'ER', nameAr: 'الطوارئ', category: 'medical', code: 'ER', beds: 11, capacity: 11, currentOccupancy: 29, staffCount: 3, isActive: true, createdAt: '', updatedAt: '' },
+  { id: 'nicu', name: 'NICU', nameAr: 'حديثي الولادة', category: 'medical', code: 'NICU', beds: 2, capacity: 2, currentOccupancy: 0, staffCount: 1, isActive: true, createdAt: '', updatedAt: '' },
+  { id: 'picu', name: 'PICU', nameAr: 'أطفال العناية', category: 'medical', code: 'PICU', beds: 4, capacity: 4, currentOccupancy: 3, staffCount: 1, isActive: true, createdAt: '', updatedAt: '' },
+  { id: 'f8', name: '8th Floor', nameAr: 'الطابق 8', category: 'medical', code: 'F8', beds: 17, capacity: 17, currentOccupancy: 2, staffCount: 1, isActive: true, createdAt: '', updatedAt: '' },
+  { id: 'f9', name: '9th Floor', nameAr: 'الطابق 9', category: 'medical', code: 'F9', beds: 17, capacity: 17, currentOccupancy: 9, staffCount: 2, isActive: true, createdAt: '', updatedAt: '' },
+  { id: 'f11', name: '11th Floor', nameAr: 'الطابق 11', category: 'medical', code: 'F11', beds: 14, capacity: 14, currentOccupancy: 1, staffCount: 1, isActive: true, createdAt: '', updatedAt: '' },
 ]
 
 const FALLBACK_ALERTS: Alert[] = [
@@ -48,8 +48,8 @@ const FALLBACK_ALERTS: Alert[] = [
     id: '1',
     type: 'over_capacity',
     message: 'ER department is over capacity',
-    messageAr: '\u0642\u0633\u0645 \u0627\u0644\u0637\u0648\u0627\u0631\u0626 \u062a\u062c\u0627\u0648\u0632 \u0627\u0644\u0633\u0639\u0629 \u0627\u0644\u0645\u062d\u062f\u062f\u0629 (29 \u0645\u0631\u064a\u0636 / 11 \u0633\u0631\u064a\u0631)',
-    department: '\u0627\u0644\u0637\u0648\u0627\u0631\u0626',
+    messageAr: 'قسم الطوارئ تجاوز السعة المحددة (29 مريض / 11 سرير)',
+    department: 'الطوارئ',
     severity: 'critical',
     timestamp: '2024-01-15T10:30:00.000Z',
   },
@@ -57,8 +57,8 @@ const FALLBACK_ALERTS: Alert[] = [
     id: '2',
     type: 'low_staff',
     message: 'Low nurse to patient ratio',
-    messageAr: '\u0646\u0633\u0628\u0629 \u0627\u0644\u0645\u0645\u0631\u0636\u064a\u0646 \u0644\u0644\u0645\u0631\u0636\u0649 \u0645\u0646\u062e\u0641\u0636\u0629 \u0641\u064a \u0642\u0633\u0645 \u0627\u0644\u0637\u0627\u0628\u0642 9',
-    department: '\u0627\u0644\u0637\u0627\u0628\u0642 9',
+    messageAr: 'نسبة الممرضين للمرضى منخفضة في قسم الطابق 9',
+    department: 'الطابق 9',
     severity: 'warning',
     timestamp: '2024-01-15T09:30:00.000Z',
   },
@@ -66,7 +66,7 @@ const FALLBACK_ALERTS: Alert[] = [
     id: '3',
     type: 'isolation',
     message: 'New isolation case registered',
-    messageAr: '\u062a\u0645 \u062a\u0633\u062c\u064a\u0644 \u062d\u0627\u0644\u0629 \u0639\u0632\u0644 \u062c\u062f\u064a\u062f\u0629 - CONTACT isolation',
+    messageAr: 'تم تسجيل حالة عزل جديدة - CONTACT isolation',
     department: 'ICU 3rd',
     severity: 'warning',
     timestamp: '2024-01-15T08:30:00.000Z',
@@ -74,9 +74,9 @@ const FALLBACK_ALERTS: Alert[] = [
 ]
 
 const staffDistribution = [
-  { name: '\u0645\u0645\u0631\u0636\u064a\u0646', value: 30, color: 'hsl(var(--chart-1))' },
-  { name: '\u0643\u0628\u0627\u0631 \u0627\u0644\u0645\u0645\u0631\u0636\u064a\u0646', value: 10, color: 'hsl(var(--chart-2))' },
-  { name: '\u0645\u0634\u0631\u0641\u064a\u0646', value: 5, color: 'hsl(var(--chart-3))' },
+  { name: 'ممرضين', value: 30, color: 'hsl(var(--chart-1))' },
+  { name: 'كبار الممرضين', value: 10, color: 'hsl(var(--chart-2))' },
+  { name: 'مشرفين', value: 5, color: 'hsl(var(--chart-3))' },
 ]
 
 export default function DashboardPage() {

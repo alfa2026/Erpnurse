@@ -266,21 +266,23 @@ export async function createNotification(data: {
 // Audit Log Operations
 // ============================================
 
-export async function createAuditLog(data: {
-  action: string
-  userId: string
-  userName: string
-  userRole: string
-  targetType?: string
-  targetId?: string
-  targetName?: string
-  details: string
+export async function createAuditLog(
+  action: string,
+  userId: string,
+  details: string,
   metadata?: Record<string, unknown>
-}): Promise<void> {
-  await createDocument(COLLECTIONS.AUDIT_LOGS, {
-    ...data,
-    timestamp: new Date().toISOString(),
-  })
+): Promise<void> {
+  try {
+    await createDocument(COLLECTIONS.AUDIT_LOGS, {
+      action,
+      userId,
+      details,
+      metadata,
+      timestamp: new Date().toISOString(),
+    })
+  } catch (error) {
+    console.error('[AuditLog] Error creating audit log:', error)
+  }
 }
 
 // ============================================
