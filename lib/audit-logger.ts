@@ -1,0 +1,12 @@
+'use client'
+import{collection,addDoc,serverTimestamp}from 'firebase/firestore'
+import{getFirestoreDb,isFirebaseConfigured}from './firebase'
+export type AuditAction='CREATE'|'UPDATE'|'DELETE'|'LOGIN'|'LOGOUT'|'AI_ALERT'|'BILLING_CHARGE'|'INVENTORY_DECREMENT'|'ERROR'
+export type AuditModule='nursing'|'pharmacy'|'labs'|'finance'|'auth'|'inventory'|'admin'|'ai'|'system'
+export interface AuditEntry{id?:string;userId:string;userName:string;action:AuditAction;collection:string;docId:string;oldValue:Record<string,unknown>|null;newValue:Record<string,unknown>|null;module:AuditModule;timestamp:string;description?:string}
+export async function writeAuditLog(e:Omit<AuditEntry,'id'>):Promise<void>{if(!isFirebaseConfigured())return;try{await addDoc(collection(getFirestoreDb(),'system_logs'),{...e,timestamp:e.timestamp??new Date().toISOString(),createdAt:serverTimestamp()})}catch(err){console.error('[AuditLog]',err)}}
+export const auditCreate=(uid:string,un:string,col:string,did:string,nv:Record<string,unknown>,mod:AuditModule='system',d?:string)=>writeAuditLog({userId:uid,userName:un,action:'CREATE',collection:col,docId:did,oldValue:null,newValue:nv,module:mod,timestamp:new Date().toISOString(),description:d})
+export const auditUpdate=(uid:string,un:string,col:string,did:string,ov:Record<string,unknown>,nv:Record<string,unknown>,mod:AuditModule='system',d?:string)=>writeAuditLog({userId:uid,userName:un,action:'UPDATE',collection:col,docId:did,oldValue:ov,newValue:nv,module:mod,timestamp:new Date().toISOString(),description:d})
+export const auditDelete=(uid:string,un:string,col:string,did:string,ov:Record<string,unknown>,mod:AuditModule='system',d?:string)=>writeAuditLog({userId:uid,userName:un,action:'DELETE',collection:col,docId:did,oldValue:ov,newValue:null,module:mod,timestamp:new Date().toISOString(),description:d})
+export const auditBillingCharge=(uid:string,un:string,pid:string,amount:number,desc:string,mod:AuditModule)=>writeAuditLog({userId:uid,userName:un,action:'BILLING_CHARGE',collection:'patient_invoices',docId:pid,oldValue:null,newValue:{amount,desc},module:mod,timestamp:new Date().toISOString(),description:desc})
+export const auditInventoryDecrement=(uid:string,un:string,iid:string,iname:string,qty:number)=>writeAuditLog({userId:uid,userName:un,action:'INVENTORY_DECREMENT',collection:'inventory',docId:iid,oldValue:null,newValue:{iname,qty},module:'inventory',timestamp:new Date().toISOString(),description:`Decremented ${qty} unit(s) of ${iname}`})
