@@ -6,6 +6,7 @@ import { NotificationProvider } from '@/contexts/notification-context'
 import { AuthProvider } from '@/contexts/auth-context'
 import { LangProvider } from '@/contexts/lang-context'
 import { Toaster } from 'sonner'
+import './fonts.css'
 import './globals.css'
 
 const cairo = Cairo({ 
