@@ -38,15 +38,6 @@ import {
 import { useFirestoreCollection } from '@/hooks/use-firestore'
 import { COLLECTIONS } from '@/types'
 
-/* ─── Static demo users ─── */
-const STATIC_USERS = [
-  { id: '1', nameAr: 'أحمد محمد',   name: 'Ahmed Mohammed',  email: 'ahmed@hospital.com',   role: 'admin'      as UserRole, status: 'active'   as const, department: 'الإدارة',          createdAt: '2023-06-15', lastLogin: '2024-01-15T10:30:00Z' },
-  { id: '2', nameAr: 'سارة أحمد',   name: 'Sara Ahmed',      email: 'sara@hospital.com',    role: 'head_nurse' as UserRole, status: 'active'   as const, department: 'العناية المركزة',   createdAt: '2023-08-20', lastLogin: '2024-01-15T09:15:00Z' },
-  { id: '3', nameAr: 'محمد علي',    name: 'Mohammed Ali',    email: 'mali@hospital.com',    role: 'supervisor' as UserRole, status: 'active'   as const, department: 'الطوارئ',           createdAt: '2023-09-10', lastLogin: '2024-01-14T22:45:00Z' },
-  { id: '4', nameAr: 'فاطمة حسن',   name: 'Fatima Hassan',   email: 'fhassan@hospital.com', role: 'staff'      as UserRole, status: 'inactive' as const, department: 'الباطنية',          createdAt: '2023-11-01', lastLogin: '2024-01-10T14:20:00Z' },
-  { id: '5', nameAr: 'خالد عبدالله', name: 'Khaled Abdullah', email: 'khaled@hospital.com',  role: 'staff'      as UserRole, status: 'active'   as const, department: 'الجراحة',           createdAt: '2023-12-15', lastLogin: '2024-01-15T08:00:00Z' },
-]
-
 const DEPARTMENTS = ['الإدارة','العناية المركزة','الطوارئ','الباطنية','الجراحة','الأطفال','النساء والولادة','العظام']
 
 const ROLE_LABELS: Record<UserRole, { ar: string; en: string; color: string }> = {
@@ -196,13 +187,12 @@ export default function UsersPage() {
   const { user: currentUser } = useAuth()
   const isAr = lang === 'ar'
 
-  const [staticUsers, setStaticUsers] = React.useState(STATIC_USERS)
   const [pendingList, setPendingList] = React.useState<PendingUser[]>([])
   const [roleFilter, setRoleFilter] = React.useState('all')
   const [isAddOpen, setIsAddOpen] = React.useState(false)
   const [rejectTarget, setRejectTarget] = React.useState<PendingUser | null>(null)
   const [approveTarget, setApproveTarget] = React.useState<PendingUser | null>(null)
-  const [editTarget, setEditTarget] = React.useState<(typeof STATIC_USERS)[0] | null>(null)
+  const [editTarget, setEditTarget] = React.useState<User | null>(null)
   const [editRole, setEditRole] = React.useState<UserRole>('staff')
   const [editDept, setEditDept] = React.useState('')
   const [newUser, setNewUser] = React.useState({ name: '', nameAr: '', email: '', role: 'staff' as UserRole, department: 'الإدارة' })
@@ -232,36 +222,64 @@ export default function UsersPage() {
   }
 
   /* Add new user */
-  const addUser = () => {
+  const addUser = async () => {
     if (!newUser.name || !newUser.email) {
       toast.error(isAr ? 'أدخل الاسم والبريد الإلكتروني' : 'Enter name and email')
       return
     }
-    const u = { ...newUser, nameAr: newUser.nameAr || newUser.name, id: Date.now().toString(), status: 'active' as const, createdAt: new Date().toISOString().split('T')[0], lastLogin: new Date().toISOString() }
-    setStaticUsers((prev) => [...prev, u])
-    setIsAddOpen(false)
-    setNewUser({ name: '', nameAr: '', email: '', role: 'staff', department: 'الإدارة' })
-    toast.success(isAr ? 'تمت إضافة المستخدم' : 'User added')
+    try {
+      await addToUser({
+        name: newUser.name,
+        nameAr: newUser.nameAr || newUser.name,
+        email: newUser.email,
+        role: newUser.role,
+        roleId: newUser.role,
+        department: newUser.department,
+        departmentId: newUser.department,
+        status: 'active',
+        employeeCode: `USR-${Date.now()}`,
+        hireDate: new Date().toISOString(),
+        phone: '',
+        mustChangePassword: false,
+      })
+      setIsAddOpen(false)
+      setNewUser({ name: '', nameAr: '', email: '', role: 'staff', department: 'الإدارة' })
+      toast.success(isAr ? 'تمت إضافة المستخدم' : 'User added')
+    } catch (err: any) {
+      toast.error(err.message)
+    }
   }
 
   /* Edit role */
-  const saveEditRole = () => {
+  const saveEditRole = async () => {
     if (!editTarget) return
-    setStaticUsers((prev) => prev.map((u) => u.id === editTarget.id ? { ...u, role: editRole, department: editDept || u.department } : u))
-    toast.success(isAr ? 'تم تعديل الصلاحية' : 'Role updated')
-    setEditTarget(null)
+    try {
+      await updateUserDoc(editTarget.id, {
+        role: editRole,
+        department: editDept || editTarget.department,
+      })
+      toast.success(isAr ? 'تم تعديل الصلاحية' : 'Role updated')
+      setEditTarget(null)
+    } catch (err: any) {
+      toast.error(err.message)
+    }
   }
 
   /* Toggle active */
-  const toggleStatus = (id: string) => {
-    setStaticUsers((prev) => prev.map((u) => u.id === id ? { ...u, status: u.status === 'active' ? 'inactive' : 'active' } : u))
+  const toggleStatus = async (id: string, currentStatus: string) => {
+    try {
+      await updateUserDoc(id, {
+        status: currentStatus === 'active' ? 'inactive' : 'active',
+      })
+    } catch (err: any) {
+      toast.error(err.message)
+    }
   }
 
-  const filteredUsers = staticUsers.filter((u) => roleFilter === 'all' || u.role === roleFilter)
+  const filteredUsers = (firestoreUsers as any[]).filter((u) => roleFilter === 'all' || u.role === roleFilter)
 
   /* Columns for approved users table */
-  type StaticUser = (typeof STATIC_USERS)[0]
-  const userColumns: Column<StaticUser>[] = [
+  const userColumns: Column<User>[] = [
     {
       key: 'name',
       header: isAr ? 'المستخدم' : 'User',
@@ -315,7 +333,7 @@ export default function UsersPage() {
               <Shield className="h-4 w-4 ml-2" />
               {isAr ? 'تغيير الصلاحية' : 'Change Role'}
             </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toggleStatus(row.id)}>
+            <DropdownMenuItem onClick={() => toggleStatus(row.id, row.status)}>
               {row.status === 'active'
                 ? <><UserX className="h-4 w-4 ml-2" />{isAr ? 'تعطيل الحساب' : 'Deactivate'}</>
                 : <><UserCheck className="h-4 w-4 ml-2" />{isAr ? 'تفعيل الحساب' : 'Activate'}</>}
@@ -323,7 +341,7 @@ export default function UsersPage() {
             <DropdownMenuSeparator />
             <DropdownMenuItem
               className="text-destructive focus:text-destructive"
-              onClick={() => setStaticUsers((prev) => prev.filter((u) => u.id !== row.id))}
+              onClick={() => removeUserDoc(row.id)}
             >
               <Trash2 className="h-4 w-4 ml-2" />
               {isAr ? 'حذف' : 'Delete'}
@@ -399,10 +417,10 @@ export default function UsersPage() {
       {/* Stats */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
-          { label: isAr ? 'إجمالي المستخدمين' : 'Total Users',  val: staticUsers.length,                                    icon: UserCog,   bg: 'bg-primary/10',     ic: 'text-primary' },
-          { label: isAr ? 'نشط' : 'Active',                      val: staticUsers.filter((u) => u.status === 'active').length, icon: UserCheck, bg: 'bg-green-100 dark:bg-green-950', ic: 'text-green-600' },
+          { label: isAr ? 'إجمالي المستخدمين' : 'Total Users',  val: firestoreUsers.length,                                    icon: UserCog,   bg: 'bg-primary/10',     ic: 'text-primary' },
+          { label: isAr ? 'نشط' : 'Active',                      val: (firestoreUsers as any[]).filter((u) => u.status === 'active').length, icon: UserCheck, bg: 'bg-green-100 dark:bg-green-950', ic: 'text-green-600' },
           { label: isAr ? 'بانتظار الموافقة' : 'Pending',        val: pendingList.length,                                    icon: Clock,     bg: 'bg-amber-100 dark:bg-amber-950', ic: 'text-amber-600' },
-          { label: isAr ? 'مدراء' : 'Admins',                    val: staticUsers.filter((u) => u.role === 'admin').length,   icon: Shield,    bg: 'bg-red-100 dark:bg-red-950',     ic: 'text-red-600' },
+          { label: isAr ? 'مدراء' : 'Admins',                    val: (firestoreUsers as any[]).filter((u) => u.role === 'admin').length,   icon: Shield,    bg: 'bg-red-100 dark:bg-red-950',     ic: 'text-red-600' },
         ].map(({ label, val, icon: Icon, bg, ic }) => (
           <Card key={label}>
             <CardContent className="pt-5 pb-5">

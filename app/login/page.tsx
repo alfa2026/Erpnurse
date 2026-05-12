@@ -12,7 +12,7 @@ import { Label }    from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useAuth, DEMO_EMPLOYEES } from '@/contexts/auth-context'
+import { useAuth } from '@/contexts/auth-context'
 import { useLang }  from '@/contexts/lang-context'
 import { toast }    from 'sonner'
 
@@ -154,11 +154,17 @@ export default function LoginPage() {
     e.preventDefault()
     if (newPwd.length < 6) { toast.error(isAr ? 'كلمة المرور 6 أحرف على الأقل' : 'Min 6 chars'); return }
     if (newPwd !== confirmPwd) { toast.error(isAr ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match'); return }
-    const emp = DEMO_EMPLOYEES.find(e => e.employeeCode.toLowerCase() === pendingUser.toLowerCase())
-    if (emp) {
-      await changePassword(emp.id, newPwd)
-      toast.success(isAr ? 'تم تغيير كلمة المرور' : 'Password changed')
-      setMustChange(false); router.push('/dashboard')
+    try {
+      const res = await changePassword(newPwd)
+      if (res.success) {
+        toast.success(isAr ? 'تم تغيير كلمة المرور' : 'Password changed')
+        setMustChange(false)
+        router.push('/dashboard')
+      } else {
+        toast.error(res.error || (isAr ? 'فشل تغيير كلمة المرور' : 'Failed to change password'))
+      }
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : 'Error')
     }
   }
 

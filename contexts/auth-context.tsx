@@ -8,9 +8,11 @@ import {
   signOut,
   onAuthStateChanged,
   User as FirebaseUser,
+  createUserWithEmailAndPassword,
+  updatePassword,
 } from 'firebase/auth'
 import { getFirebaseAuth, isFirebaseConfigured } from '@/lib/firebase'
-import { getDocument, getUserByEmployeeCode, createAuditLog } from '@/lib/firebase-services'
+import { getDocument, getUserByEmployeeCode, createAuditLog, createDocumentWithId } from '@/lib/firebase-services'
 import { User, UserRole, COLLECTIONS } from '@/types'
 
 interface AuthContextType {
@@ -21,7 +23,9 @@ interface AuthContextType {
   permissions: string[]
   login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>
   loginWithEmployeeCode: (code: string, password: string) => Promise<{ success: boolean; error?: string }>
-  loginWithGoogle: () => Promise<{ success: boolean; error?: string }>
+  loginWithGoogle: () => Promise<{ success: boolean; error?: string; pendingApproval?: boolean }>
+  register: (data: { name: string; nameAr: string; email: string; password: string }) => Promise<{ success: boolean; error?: string }>
+  changePassword: (newPassword: string) => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
   hasPermission: (permission: string) => boolean
   hasAnyPermission: (permissions: string[]) => boolean
@@ -112,10 +116,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const auth = getFirebaseAuth()
       const provider = new GoogleAuthProvider()
       const result = await signInWithPopup(auth, provider)
-      const userDoc = await getDocument('users', result.user.uid)
+      const userDoc = await getDocument<User>('users', result.user.uid)
       if (!userDoc) {
-        await signOut(auth)
-        return { success: false, error: 'Account not found. Please register first.' }
+        // New user - create pending approval account
+        const newUser: Omit<User, 'id'> = {
+          name: result.user.displayName || result.user.email?.split('@')[0] || 'User',
+          nameAr: result.user.displayName || result.user.email?.split('@')[0] || 'مستخدم',
+          email: result.user.email || '',
+          employeeCode: `GOOG-${Date.now()}`,
+          role: 'staff',
+          roleId: '',
+          department: '',
+          departmentId: '',
+          status: 'pending_approval',
+          phone: result.user.phoneNumber || '',
+          hireDate: new Date().toISOString(),
+          mustChangePassword: false,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }
+        await createDocumentWithId('users', result.user.uid, newUser)
+        await createAuditLog('USER_CREATED', result.user.uid, 'User registered via Google - pending approval')
+        localStorage.setItem('pronurse_pending_id', result.user.uid)
+        return { success: true, pendingApproval: true }
       }
       await fetchUserData(result.user)
       await createAuditLog('LOGIN', result.user.uid, 'User logged in with Google')
@@ -124,6 +147,47 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       return { success: false, error: error.message }
     }
   }, [fetchUserData])
+
+  const register = useCallback(async (data: { name: string; nameAr: string; email: string; password: string }) => {
+    try {
+      const auth = getFirebaseAuth()
+      const result = await createUserWithEmailAndPassword(auth, data.email, data.password)
+      const newUser: Omit<User, 'id'> = {
+        name: data.name,
+        nameAr: data.nameAr,
+        email: data.email,
+        employeeCode: `REG-${Date.now()}`,
+        role: 'staff',
+        roleId: '',
+        department: '',
+        departmentId: '',
+        status: 'pending_approval',
+        phone: '',
+        hireDate: new Date().toISOString(),
+        mustChangePassword: false,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      }
+      await createDocumentWithId('users', result.user.uid, newUser)
+      await createAuditLog('USER_CREATED', result.user.uid, `User registered - ${data.email} - pending approval`)
+      localStorage.setItem('pronurse_pending_id', result.user.uid)
+      await signOut(auth)
+      return { success: true }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }, [])
+
+  const changePassword = useCallback(async (newPassword: string) => {
+    try {
+      if (!firebaseUser) return { success: false, error: 'Not authenticated' }
+      await updatePassword(firebaseUser, newPassword)
+      await createAuditLog('PASSWORD_CHANGED', user?.id || '', 'Password changed by user')
+      return { success: true }
+    } catch (error: any) {
+      return { success: false, error: error.message }
+    }
+  }, [firebaseUser, user])
 
   const logout = useCallback(async () => {
     try {
@@ -154,7 +218,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   return (
     <AuthContext.Provider value={{
       user, firebaseUser, loading, isAuthenticated, permissions,
-      login, loginWithEmployeeCode, loginWithGoogle, logout,
+      login, loginWithEmployeeCode, loginWithGoogle, logout, register, changePassword,
       hasPermission, hasAnyPermission, isRole,
     }}>
       {children}

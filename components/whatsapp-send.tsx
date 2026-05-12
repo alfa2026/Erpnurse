@@ -9,13 +9,9 @@ import { Textarea } from '@/components/ui/textarea'
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription,
 } from '@/components/ui/dialog'
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from '@/components/ui/select'
 import { Badge } from '@/components/ui/badge'
 import { toast } from 'sonner'
 import { useLang } from '@/contexts/lang-context'
-import { DEMO_EMPLOYEES } from '@/contexts/auth-context'
 
 interface Props {
   open: boolean
@@ -132,24 +128,6 @@ export function WhatsAppSendDialog({ open, onClose, defaultPhone = '', defaultNa
               onChange={(e) => setPhone(e.target.value)}
               dir="ltr"
             />
-          </div>
-
-          {/* Quick select from employees */}
-          <div className="space-y-2">
-            <Label className="text-xs text-muted-foreground">{isAr ? 'أو اختر موظفاً' : 'Or pick an employee'}</Label>
-            <Select onValueChange={(val) => {
-              const emp = DEMO_EMPLOYEES.find((e) => e.id === val)
-              if (emp) setPhone(`+966 5XX XXX XXX — ${emp.nameAr}`)
-            }}>
-              <SelectTrigger><SelectValue placeholder={isAr ? 'اختر...' : 'Select...'} /></SelectTrigger>
-              <SelectContent>
-                {DEMO_EMPLOYEES.map((emp) => (
-                  <SelectItem key={emp.id} value={emp.id}>
-                    {emp.nameAr} — {emp.employeeCode}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
 
           {/* Message type */}
