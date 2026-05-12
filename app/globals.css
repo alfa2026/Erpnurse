@@ -1,6 +1,9 @@
 @import 'tailwindcss';
 @import 'tw-animate-css';
 
+/* Google Fonts - Arabic Fonts */
+@import url('https://fonts.googleapis.com/css2?family=Cairo:wght@200;300;400;500;600;700;800;900&family=Noto+Naskh+Arabic:wght@400;500;600;700&family=Tajawal:wght@200;300;400;500;700;800;900&display=swap');
+
 @custom-variant dark (&:is(.dark *));
 
 :root {
@@ -84,7 +87,7 @@
 }
 
 @theme inline {
-  --font-sans: 'Cairo', 'Geist', sans-serif;
+  --font-sans: 'Cairo', 'Noto Naskh Arabic', 'Tajawal', 'Geist', sans-serif;
   --font-mono: 'Geist Mono', 'Geist Mono Fallback';
   --color-background: var(--background);
   --color-foreground: var(--foreground);
