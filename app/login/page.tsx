@@ -360,10 +360,17 @@ export default function LoginPage() {
                 <Button
                   variant="ghost"
                   className="w-full text-sm gap-2"
-                  onClick={() => setView('register')}
+                  onClick={() => router.push('/register')}
                 >
                   <UserPlus className="h-4 w-4" />
                   {isAr ? 'إنشاء حساب جديد' : 'Create New Account'}
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="w-full text-sm text-muted-foreground"
+                  onClick={() => setForgotPasswordOpen(true)}
+                >
+                  {isAr ? 'نسيت كلمة المرور؟' : 'Forgot password?'}
                 </Button>
                 <Button
                   variant="ghost"
