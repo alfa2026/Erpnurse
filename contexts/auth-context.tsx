@@ -1,6 +1,6 @@
 'use client'
 
-import { createContext, useContext, useEffect, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useEffect, useState, useCallback, ReactNode, useRef } from 'react'
 import {
   signInWithEmailAndPassword,
   signInWithPopup,
@@ -11,7 +11,19 @@ import {
   sendPasswordResetEmail,
   User as FirebaseUser,
 } from 'firebase/auth'
-import { doc, getDoc, setDoc, updateDoc, collection, query, where, getDocs, limit } from 'firebase/firestore'
+import { 
+  doc, 
+  getDoc, 
+  setDoc, 
+  updateDoc, 
+  collection, 
+  query, 
+  where, 
+  getDocs, 
+  limit,
+  onSnapshot,
+  Unsubscribe
+} from 'firebase/firestore'
 import { getFirebaseAuth, getFirestoreDb, isFirebaseConfigured } from '@/lib/firebase'
 import { ensureAdminExists } from '@/lib/seed-admin'
 import { User, UserRole, COLLECTIONS } from '@/types'
@@ -31,6 +43,7 @@ interface AuthContextType {
   hasPermission: (permission: string) => boolean
   hasAnyPermission: (permissions: string[]) => boolean
   isRole: (roles: UserRole | UserRole[]) => boolean
+  refreshUser: () => Promise<void>
 }
 
 interface RegisterData {
@@ -50,27 +63,72 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [firebaseUser, setFirebaseUser] = useState<FirebaseUser | null>(null)
   const [loading, setLoading] = useState(true)
   const [permissions, setPermissions] = useState<string[]>([])
+  
+  // Track unsubscribers for cleanup
+  const userUnsubRef = useRef<Unsubscribe | null>(null)
+  const roleUnsubRef = useRef<Unsubscribe | null>(null)
 
   const isAuthenticated = !!user && user.status === 'active'
 
-  // Fetch user data from Firestore
-  const fetchUserData = useCallback(async (fbUser: FirebaseUser): Promise<User | null> => {
-    if (!isFirebaseConfigured()) return null
+  // Fetch role permissions from Firestore
+  const fetchRolePermissions = useCallback(async (roleId: string): Promise<string[]> => {
+    if (!isFirebaseConfigured() || !roleId) return []
     
     try {
       const db = getFirestoreDb()
-      const userRef = doc(db, COLLECTIONS.USERS, fbUser.uid)
-      const userSnap = await getDoc(userRef)
+      const roleRef = doc(db, COLLECTIONS.ROLES, roleId)
+      const roleSnap = await getDoc(roleRef)
       
-      if (!userSnap.exists()) {
-        return null
+      if (roleSnap.exists()) {
+        return roleSnap.data().permissions || []
       }
+      return []
+    } catch (error) {
+      console.error('[Auth] Error fetching role permissions:', error)
+      return []
+    }
+  }, [])
+
+  // Subscribe to user document for real-time updates
+  const subscribeToUserDocument = useCallback((uid: string) => {
+    if (!isFirebaseConfigured()) return
+
+    // Cleanup previous subscription
+    if (userUnsubRef.current) {
+      userUnsubRef.current()
+    }
+
+    const db = getFirestoreDb()
+    const userRef = doc(db, COLLECTIONS.USERS, uid)
+
+    userUnsubRef.current = onSnapshot(userRef, async (snapshot) => {
+      if (!snapshot.exists()) {
+        // User document deleted - force logout
+        console.log('[Auth] User document deleted, logging out')
+        setUser(null)
+        setPermissions([])
+        const auth = getFirebaseAuth()
+        await signOut(auth)
+        return
+      }
+
+      const userDoc = snapshot.data()
       
-      const userDoc = userSnap.data()
+      // Check if user was blocked/deactivated - auto logout
+      if (userDoc.status === 'rejected' || userDoc.status === 'inactive') {
+        console.log('[Auth] User blocked/deactivated, logging out')
+        setUser(null)
+        setPermissions([])
+        const auth = getFirebaseAuth()
+        await signOut(auth)
+        return
+      }
+
+      // Build user data
       const userData: User = {
-        id: fbUser.uid,
-        email: fbUser.email || '',
-        name: userDoc.name || fbUser.displayName || '',
+        id: uid,
+        email: userDoc.email || '',
+        name: userDoc.name || '',
         nameAr: userDoc.nameAr || userDoc.name || '',
         employeeCode: userDoc.employeeCode || '',
         role: userDoc.role || 'staff',
@@ -78,21 +136,70 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         department: userDoc.department || '',
         departmentId: userDoc.departmentId || '',
         status: userDoc.status || 'pending_approval',
-        avatar: fbUser.photoURL || userDoc.avatar || '',
+        avatar: userDoc.avatar || userDoc.photoURL || '',
         phone: userDoc.phone || '',
         hireDate: userDoc.hireDate || new Date().toISOString().split('T')[0],
         mustChangePassword: userDoc.mustChangePassword || false,
         createdAt: userDoc.createdAt || new Date().toISOString(),
         updatedAt: userDoc.updatedAt || new Date().toISOString(),
       }
-      
-      setPermissions(userDoc.permissions || [])
-      return userData
-    } catch (error) {
-      console.error('[Auth] Error fetching user data:', error)
-      return null
+
+      setUser(userData)
+
+      // Fetch permissions from role document
+      if (userDoc.roleId) {
+        const perms = await fetchRolePermissions(userDoc.roleId)
+        setPermissions(perms)
+      } else if (userDoc.permissions) {
+        setPermissions(userDoc.permissions)
+      } else {
+        // Default permissions based on role
+        const defaultPerms = getDefaultPermissions(userDoc.role)
+        setPermissions(defaultPerms)
+      }
+    }, (error) => {
+      console.error('[Auth] User subscription error:', error)
+    })
+  }, [fetchRolePermissions])
+
+  // Get default permissions based on role
+  const getDefaultPermissions = (role: string): string[] => {
+    switch (role) {
+      case 'super_admin':
+      case 'hospital_admin':
+        return ['*'] // All permissions
+      case 'admin':
+        return [
+          'users.view', 'users.create', 'users.edit', 'users.delete',
+          'departments.view', 'departments.create', 'departments.edit',
+          'reports.view', 'reports.create',
+          'schedules.view', 'schedules.create', 'schedules.edit',
+          'attendance.view', 'attendance.edit',
+        ]
+      case 'head_nurse':
+        return [
+          'users.view', 'departments.view', 'departments.edit',
+          'schedules.view', 'schedules.create', 'schedules.edit',
+          'attendance.view', 'attendance.edit',
+          'reports.view', 'reports.create',
+          'patients.view', 'patients.edit',
+        ]
+      case 'supervisor':
+        return [
+          'users.view', 'departments.view',
+          'schedules.view', 'attendance.view', 'attendance.edit',
+          'patients.view',
+        ]
+      case 'nurse':
+      case 'doctor':
+        return [
+          'patients.view', 'patients.edit',
+          'schedules.view', 'attendance.view',
+        ]
+      default:
+        return ['dashboard.view']
     }
-  }, [])
+  }
 
   // Create user document in Firestore
   const createUserDocument = useCallback(async (
@@ -141,7 +248,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, [])
 
-  // Auth state listener
+  // Auth state listener with real-time user subscription
   useEffect(() => {
     if (!isFirebaseConfigured()) {
       setLoading(false)
@@ -152,9 +259,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const unsubscribe = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         setFirebaseUser(fbUser)
-        const userData = await fetchUserData(fbUser)
-        setUser(userData)
+        
+        // Check if user exists in Firestore
+        const db = getFirestoreDb()
+        const userRef = doc(db, COLLECTIONS.USERS, fbUser.uid)
+        const userSnap = await getDoc(userRef)
+        
+        if (userSnap.exists()) {
+          // Subscribe to real-time updates
+          subscribeToUserDocument(fbUser.uid)
+        } else {
+          // User not in Firestore yet
+          setUser(null)
+        }
       } else {
+        // Cleanup subscriptions on logout
+        if (userUnsubRef.current) {
+          userUnsubRef.current()
+          userUnsubRef.current = null
+        }
+        if (roleUnsubRef.current) {
+          roleUnsubRef.current()
+          roleUnsubRef.current = null
+        }
         setUser(null)
         setFirebaseUser(null)
         setPermissions([])
@@ -162,8 +289,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       setLoading(false)
     })
 
-    return () => unsubscribe()
-  }, [fetchUserData])
+    return () => {
+      unsubscribe()
+      if (userUnsubRef.current) userUnsubRef.current()
+      if (roleUnsubRef.current) roleUnsubRef.current()
+    }
+  }, [subscribeToUserDocument])
+
+  // Refresh user data manually
+  const refreshUser = useCallback(async () => {
+    if (firebaseUser) {
+      subscribeToUserDocument(firebaseUser.uid)
+    }
+  }, [firebaseUser, subscribeToUserDocument])
 
   // Email/Password Login
   const login = useCallback(async (email: string, password: string) => {
@@ -174,15 +312,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const auth = getFirebaseAuth()
       const result = await signInWithEmailAndPassword(auth, email, password)
-      const userData = await fetchUserData(result.user)
+      const db = getFirestoreDb()
       
-      if (!userData) {
+      // Check user status in Firestore
+      const userRef = doc(db, COLLECTIONS.USERS, result.user.uid)
+      const userSnap = await getDoc(userRef)
+      
+      if (!userSnap.exists()) {
         await signOut(auth)
         return { success: false, error: 'User account not found in system' }
       }
       
+      const userData = userSnap.data()
+      
       if (userData.status === 'pending_approval') {
-        // Store pending ID for status check page
         localStorage.setItem('pronurse_pending_id', result.user.uid)
         await signOut(auth)
         return { success: false, pendingApproval: true, error: 'Account pending approval' }
@@ -193,23 +336,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         return { success: false, error: 'Account is not active. Contact administrator.' }
       }
       
-      setUser(userData)
+      // Subscribe to real-time updates
+      subscribeToUserDocument(result.user.uid)
       setFirebaseUser(result.user)
+      
       await createAuditLog('LOGIN', result.user.uid, `User logged in with email: ${email}`)
       
       // Update last login
-      const db = getFirestoreDb()
-      await updateDoc(doc(db, COLLECTIONS.USERS, result.user.uid), {
-        lastLogin: new Date().toISOString(),
-      })
+      await updateDoc(userRef, { lastLogin: new Date().toISOString() })
       
       return { success: true }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Login failed'
       console.error('[Auth] Login error:', error)
+      
+      // Translate Firebase errors to user-friendly messages
+      if (errorMessage.includes('auth/invalid-credential') || errorMessage.includes('auth/wrong-password')) {
+        return { success: false, error: 'Invalid email or password' }
+      }
+      if (errorMessage.includes('auth/user-not-found')) {
+        return { success: false, error: 'User not found' }
+      }
+      if (errorMessage.includes('auth/too-many-requests')) {
+        return { success: false, error: 'Too many failed attempts. Please try again later.' }
+      }
+      
       return { success: false, error: errorMessage }
     }
-  }, [fetchUserData, createAuditLog])
+  }, [createAuditLog, subscribeToUserDocument])
 
   // Employee Code Login
   const loginWithEmployeeCode = useCallback(async (code: string, password: string) => {
@@ -278,9 +432,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         // Update last login
         await updateDoc(userRef, { lastLogin: new Date().toISOString() })
         
-        const fullUserData = await fetchUserData(result.user)
-        setUser(fullUserData)
+        // Subscribe to real-time updates
+        subscribeToUserDocument(result.user.uid)
         setFirebaseUser(result.user)
+        
         await createAuditLog('LOGIN', result.user.uid, 'User logged in with Google')
         
         return { success: true }
@@ -308,14 +463,21 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         localStorage.setItem('pronurse_pending_id', result.user.uid)
         await signOut(auth)
         
+        await createAuditLog('REGISTRATION', result.user.uid, `New user registered via Google: ${result.user.email}`)
+        
         return { success: false, pendingApproval: true, error: 'Account created - pending approval' }
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Google sign-in failed'
       console.error('[Auth] Google sign-in error:', error)
+      
+      if (errorMessage.includes('popup-closed')) {
+        return { success: false, error: 'Sign-in cancelled' }
+      }
+      
       return { success: false, error: errorMessage }
     }
-  }, [fetchUserData, createUserDocument, createAuditLog])
+  }, [createUserDocument, createAuditLog, subscribeToUserDocument])
 
   // Registration
   const register = useCallback(async (data: RegisterData) => {
@@ -325,6 +487,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     try {
       const auth = getFirebaseAuth()
+      const db = getFirestoreDb()
+      
+      // Check if employee code already exists
+      if (data.employeeCode) {
+        const codeQuery = query(
+          collection(db, COLLECTIONS.USERS),
+          where('employeeCode', '==', data.employeeCode.toUpperCase()),
+          limit(1)
+        )
+        const codeSnap = await getDocs(codeQuery)
+        if (!codeSnap.empty) {
+          return { success: false, error: 'Employee code already registered' }
+        }
+      }
       
       // Create Firebase Auth account
       const result = await createUserWithEmailAndPassword(auth, data.email, data.password)
@@ -359,6 +535,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Registration failed'
       console.error('[Auth] Registration error:', error)
+      
+      if (errorMessage.includes('email-already-in-use')) {
+        return { success: false, error: 'Email already registered' }
+      }
+      if (errorMessage.includes('weak-password')) {
+        return { success: false, error: 'Password is too weak. Use at least 6 characters.' }
+      }
+      
       return { success: false, error: errorMessage }
     }
   }, [createUserDocument, createAuditLog])
@@ -376,6 +560,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : 'Password reset failed'
       console.error('[Auth] Password reset error:', error)
+      
+      if (errorMessage.includes('user-not-found')) {
+        return { success: false, error: 'No account found with this email' }
+      }
+      
       return { success: false, error: errorMessage }
     }
   }, [])
@@ -390,6 +579,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       console.error('[Auth] Audit log error on logout:', e)
     }
     
+    // Cleanup subscriptions
+    if (userUnsubRef.current) {
+      userUnsubRef.current()
+      userUnsubRef.current = null
+    }
+    if (roleUnsubRef.current) {
+      roleUnsubRef.current()
+      roleUnsubRef.current = null
+    }
+    
     const auth = getFirebaseAuth()
     await signOut(auth)
     setUser(null)
@@ -402,6 +601,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const hasPermission = useCallback((permission: string) => {
     if (!user) return false
     if (user.role === 'super_admin' || user.role === 'hospital_admin') return true
+    if (permissions.includes('*')) return true
     return permissions.includes(permission)
   }, [user, permissions])
 
@@ -431,6 +631,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       hasPermission, 
       hasAnyPermission, 
       isRole,
+      refreshUser,
     }}>
       {children}
     </AuthContext.Provider>
