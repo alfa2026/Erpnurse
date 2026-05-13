@@ -53,3 +53,6 @@ export default function WhatsAppSend({ open, onOpenChange }: Props) {
     </Dialog>
   )
 }
+export default function WhatsAppSend({ open, onOpenChange }: Props) {
+  // ... الكود اللي بعتهولك المرة اللي فاتت ...
+}
