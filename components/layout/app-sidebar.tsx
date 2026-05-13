@@ -3,10 +3,7 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { 
-  LayoutDashboard, Users, ShieldCheck, 
-  Stethoscope, Pill, Wallet, Hospital 
-} from 'lucide-react'
+import { LayoutDashboard, Users, ShieldCheck, Stethoscope, Pill, Wallet, Hospital } from 'lucide-react'
 import { cn } from '@/lib/utils'
 import { usePermissions } from '@/hooks/use-permissions'
 
@@ -14,12 +11,10 @@ const NAVIGATION_ITEMS = [
   { title: 'الرئيسية', href: '/dashboard', icon: LayoutDashboard, permission: 'dashboard.view' },
   { title: 'الموظفون', href: '/admin/users', icon: Users, permission: 'users.manage' },
   { title: 'الصلاحيات', href: '/admin/roles', icon: ShieldCheck, permission: 'roles.manage' },
-  { title: 'التمريض', href: '/clinical/nursing', icon: Stethoscope, permission: 'patients.view' },
-  { title: 'الصيدلية', href: '/pharmacy/inventory', icon: Pill, permission: 'inventory.manage' },
-  { title: 'الحسابات', href: '/finance/billing', icon: Wallet, permission: 'payroll.manage' },
 ]
 
-export default function AppSidebar() {
+// غيرنا هنا لـ export function عشان الـ Dashboard Layout يعرف يشوفه بالأقواس { AppSidebar }
+export function AppSidebar() {
   const pathname = usePathname()
   const { hasPermission } = usePermissions()
 
