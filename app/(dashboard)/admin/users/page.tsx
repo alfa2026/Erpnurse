@@ -2,8 +2,7 @@
 
 import * as React from 'react'
 import {
-  Plus, MoreHorizontal, Shield, UserCog,
-  CheckCircle2, XCircle, Clock, Users, UserCheck, UserX, Trash2, Search
+  MoreHorizontal, CheckCircle2, Clock, Users, Trash2, Shield, UserX, UserCheck
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -11,107 +10,129 @@ import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
-  DropdownMenuSeparator, DropdownMenuTrigger,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
 } from '@/components/ui/dropdown-menu'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
+} from '@/components/ui/dialog'
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
+} from '@/components/ui/select'
 import { DataTable, Column } from '@/components/ui/data-table'
 import { toast } from 'sonner'
-import { useLang } from '@/contexts/lang-context'
 import { useFirestoreCollection } from '@/hooks/use-firestore'
-import { COLLECTIONS, UserRole } from '@/types'
-
-const ROLE_LABELS: Record<string, { ar: string; en: string; color: string }> = {
-  super_admin: { ar: 'مدير نظام', en: 'Super Admin', color: 'bg-red-100 text-red-700' },
-  admin: { ar: 'مسؤول', en: 'Admin', color: 'bg-orange-100 text-orange-700' },
-  nurse: { ar: 'ممرض/ة', en: 'Nurse', color: 'bg-blue-100 text-blue-700' },
-  staff: { ar: 'موظف', en: 'Staff', color: 'bg-slate-100 text-slate-700' },
-}
+import { COLLECTIONS, User } from '@/types'
 
 export default function UsersPage() {
-  const { lang } = useLang()
-  const isAr = lang === 'ar'
-  
-  // جلب كافة المستخدمين لحظياً من Firestore
-  const { data: allUsers, loading, updateRecord, deleteRecord } = useFirestoreCollection(COLLECTIONS.USERS)
+  // 1. جلب المستخدمين والأدوار لحظياً
+  const { data: allUsers, loading: usersLoading, update: updateRecord, remove: deleteRecord } = useFirestoreCollection(COLLECTIONS.USERS)
+  const { data: rolesData, loading: rolesLoading } = useFirestoreCollection(COLLECTIONS.ROLES)
 
-  // تصفية المستخدمين النشطين والمعلقين
+  const [selectedUser, setSelectedUser] = React.useState<User | null>(null)
+  const [isApproveDialogOpen, setIsApproveDialogOpen] = React.useState(false)
+  const [selectedRoleId, setSelectedRoleId] = React.useState<string>("")
+
+  // تصفية المستخدمين (نشط / معلق)
   const activeUsers = allUsers.filter(u => u.status === 'active')
   const pendingUsers = allUsers.filter(u => u.status === 'pending_approval' || u.status === 'pending')
 
-  // دالة الموافقة (تحويل الحالة لنشط)
-  const handleApprove = async (userId: string) => {
+  // دالة فتح نافذة الموافقة
+  const handleApproveClick = (user: User) => {
+    setSelectedUser(user)
+    setIsApproveDialogOpen(true)
+  }
+
+  // دالة الحفظ النهائي للموافقة وربط الدور
+  const handleFinalApprove = async () => {
+    if (!selectedUser || !selectedRoleId) {
+      toast.error('يرجى اختيار دور وظيفي للموظف');
+      return;
+    }
+    
+    const roleDoc = rolesData.find(r => r.id === selectedRoleId)
+
     try {
-      await updateRecord(userId, { 
+      await updateRecord(selectedUser.id, { 
         status: 'active',
+        roleId: selectedRoleId, // ID الدور من صفحة Roles
+        role: roleDoc?.name || 'Staff', 
         updatedAt: new Date().toISOString() 
       })
-      toast.success(isAr ? 'تم تفعيل الحساب بنجاح' : 'Account activated successfully')
+      toast.success(`تم تفعيل حساب ${selectedUser.nameAr || selectedUser.name} بنجاح`);
+      setIsApproveDialogOpen(false);
+      setSelectedRoleId("");
     } catch (error) {
-      toast.error('حدث خطأ أثناء التفعيل')
+      toast.error('حدث خطأ أثناء تحديث البيانات');
     }
   }
 
-  // دالة الحذف أو الرفض
-  const handleDelete = async (userId: string) => {
-    if (confirm(isAr ? 'هل أنت متأكد من حذف هذا المستخدم؟' : 'Are you sure?')) {
-      await deleteRecord(userId)
-      toast.info(isAr ? 'تم الحذف' : 'Deleted')
+  // دالة لعرض الـ Badge الخاص بالدور بناءً على اللون اللي اخترته في صفحة Roles
+  const getRoleBadge = (user: User) => {
+    const role = rolesData.find(r => r.id === user.roleId)
+    if (role) {
+      return (
+        <Badge 
+          variant="outline" 
+          style={{ 
+            backgroundColor: `${role.color}10`, // شفافية 10%
+            color: role.color, 
+            borderColor: role.color 
+          }}
+        >
+          {role.nameAr}
+        </Badge>
+      )
     }
+    return <Badge variant="secondary">{user.role || 'بدون دور'}</Badge>
   }
 
-  const userColumns: Column<any>[] = [
+  const userColumns: Column<User>[] = [
     {
       key: 'name',
-      header: isAr ? 'المستخدم' : 'User',
+      header: 'الموظف',
       cell: (row) => (
-        <div className="flex items-center gap-3">
-          <Avatar className="h-9 w-9">
-            <AvatarImage src={row.photoURL} />
-            <AvatarFallback>{row.name?.charAt(0) || row.displayName?.charAt(0)}</AvatarFallback>
+        <div className="flex items-center gap-3 text-right">
+          <Avatar className="h-10 w-10 border">
+            <AvatarImage src={row.avatar} />
+            <AvatarFallback>{(row.nameAr || 'م').charAt(0)}</AvatarFallback>
           </Avatar>
           <div>
-            <p className="font-medium text-sm">{row.name || row.displayName}</p>
+            <p className="font-bold text-sm">{row.nameAr || row.name}</p>
             <p className="text-xs text-muted-foreground">{row.email}</p>
           </div>
         </div>
       ),
     },
     {
-      key: 'role',
-      header: isAr ? 'الدور' : 'Role',
-      cell: (row) => (
-        <Badge variant="outline" className={ROLE_LABELS[row.role]?.color || ''}>
-          {isAr ? ROLE_LABELS[row.role]?.ar : ROLE_LABELS[row.role]?.en}
-        </Badge>
-      ),
+      key: 'roleId',
+      header: 'المسمى الوظيفي',
+      cell: (row) => getRoleBadge(row),
     },
     {
       key: 'status',
-      header: isAr ? 'الحالة' : 'Status',
+      header: 'الحالة',
       cell: (row) => (
         <Badge className={row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'}>
-          {row.status === 'active' ? (isAr ? 'نشط' : 'Active') : (isAr ? 'معلق' : 'Pending')}
+          {row.status === 'active' ? 'نشط' : 'في انتظار الموافقة'}
         </Badge>
       ),
     },
     {
       key: 'actions',
-      header: isAr ? 'الإجراءات' : 'Actions',
+      header: 'إجراءات',
       cell: (row) => (
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
           </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
+          <DropdownMenuContent align="end" className="text-right">
             {row.status !== 'active' && (
-              <DropdownMenuItem onClick={() => handleApprove(row.id)} className="text-green-600">
-                <CheckCircle2 className="h-4 w-4 ml-2" />
-                {isAr ? 'موافقة وتفعيل' : 'Approve'}
+              <DropdownMenuItem onClick={() => handleApproveClick(row)} className="text-green-600 cursor-pointer">
+                <UserCheck className="h-4 w-4 ml-2" /> موافقة وتعيين دور
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => handleDelete(row.id)} className="text-red-600">
-              <Trash2 className="h-4 w-4 ml-2" />
-              {isAr ? 'حذف' : 'Delete'}
+            <DropdownMenuItem onClick={() => deleteRecord(row.id)} className="text-red-600 cursor-pointer">
+              <Trash2 className="h-4 w-4 ml-2" /> حذف الموظف
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
@@ -119,83 +140,108 @@ export default function UsersPage() {
     },
   ]
 
-  if (loading) return <div className="p-10 text-center">{isAr ? 'جاري التحميل...' : 'Loading...'}</div>
+  if (usersLoading || rolesLoading) return <div className="p-20 text-center font-bold">جاري تحميل بيانات الموظفين...</div>
 
   return (
-    <div className="space-y-6 p-4">
+    <div className="space-y-6 p-6" dir="rtl">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">{isAr ? 'إدارة طاقم العمل' : 'Staff Management'}</h1>
+        <h1 className="text-3xl font-bold tracking-tight">إدارة طاقم العمل</h1>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-100">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <Users className="text-blue-600" />
-              <div>
-                <p className="text-2xl font-bold">{activeUsers.length}</p>
-                <p className="text-sm text-muted-foreground">{isAr ? 'موظف نشط' : 'Active Staff'}</p>
-              </div>
+      {/* الاحصائيات السريعة */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <Card className="border-r-4 border-r-green-500 shadow-sm">
+          <CardContent className="p-6 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">موظفين نشطين</p>
+              <h3 className="text-3xl font-bold text-green-600">{activeUsers.length}</h3>
             </div>
+            <UserCheck className="h-10 w-10 text-green-100" />
           </CardContent>
         </Card>
-        
-        <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-100">
-          <CardContent className="pt-4">
-            <div className="flex items-center gap-3">
-              <Clock className="text-amber-600" />
-              <div>
-                <p className="text-2xl font-bold">{pendingUsers.length}</p>
-                <p className="text-sm text-muted-foreground">{isAr ? 'طلبات معلقة' : 'Pending Requests'}</p>
-              </div>
+        <Card className="border-r-4 border-r-amber-500 shadow-sm">
+          <CardContent className="p-6 flex items-center justify-between">
+            <div>
+              <p className="text-sm font-medium text-muted-foreground">طلبات معلقة</p>
+              <h3 className="text-3xl font-bold text-amber-600">{pendingUsers.length}</h3>
             </div>
+            <Clock className="h-10 w-10 text-amber-100" />
           </CardContent>
         </Card>
       </div>
 
-      <Tabs defaultValue="active">
-        <TabsList>
-          <TabsTrigger value="active">{isAr ? 'الموظفين' : 'Staff'}</TabsTrigger>
+      <Tabs defaultValue="active" className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="active">الموظفين المعتمدين ({activeUsers.length})</TabsTrigger>
           <TabsTrigger value="pending" className="relative">
-            {isAr ? 'الطلبات الجديدة' : 'New Requests'}
+            طلبات الانضمام ({pendingUsers.length})
             {pendingUsers.length > 0 && (
-              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">
-                {pendingUsers.length}
-              </span>
+              <span className="absolute -top-1 -right-1 flex h-3 w-3 bg-red-500 rounded-full" />
             )}
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="active">
-          <DataTable 
-            columns={userColumns} 
-            data={activeUsers} 
-            searchKey="name" 
-            searchPlaceholder={isAr ? 'بحث بالاسم...' : 'Search...'}
-          />
+          <DataTable columns={userColumns} data={activeUsers} searchKey="nameAr" />
         </TabsContent>
 
         <TabsContent value="pending">
-          <DataTable 
-            columns={userColumns} 
-            data={pendingUsers} 
-            searchKey="name" 
-            searchPlaceholder={isAr ? 'بحث بالاسم...' : 'Search...'}
-          />
+          <DataTable columns={userColumns} data={pendingUsers} searchKey="nameAr" />
         </TabsContent>
       </Tabs>
+
+      {/* نافذة اختيار الدور والموافقة */}
+      <Dialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
+        <DialogContent className="sm:max-w-[450px]" dir="rtl">
+          <DialogHeader>
+            <DialogTitle className="text-xl">تفعيل حساب الموظف</DialogTitle>
+            <DialogDescription>
+              يجب اختيار مسمى وظيفي (Role) لتعيين الصلاحيات المناسبة لهذا الموظف.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="py-6 space-y-5">
+            {/* عرض بيانات الموظف المختبر */}
+            <div className="flex items-center gap-4 p-4 bg-slate-50 rounded-2xl border">
+              <Avatar className="h-12 w-12 border-2 border-white shadow-sm">
+                <AvatarImage src={selectedUser?.avatar}/>
+              </Avatar>
+              <div>
+                <p className="font-bold text-slate-900">{selectedUser?.nameAr || selectedUser?.name}</p>
+                <p className="text-xs text-slate-500">{selectedUser?.email}</p>
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label className="text-sm font-bold text-slate-700">اختر المسمى الوظيفي (الأدوار المتاحة):</Label>
+              <Select onValueChange={setSelectedRoleId} value={selectedRoleId}>
+                <SelectTrigger className="h-12">
+                  <SelectValue placeholder="اختر من الأدوار التي أنشأتها..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {rolesData.length === 0 ? (
+                    <div className="p-2 text-center text-sm text-muted-foreground">لا توجد أدوار، قم بإنشائها أولاً</div>
+                  ) : (
+                    rolesData.map((role) => (
+                      <SelectItem key={role.id} value={role.id}>
+                        <div className="flex items-center gap-2">
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: role.color }} />
+                          {role.nameAr}
+                        </div>
+                      </SelectItem>
+                    ))
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <DialogFooter className="gap-2">
+            <Button variant="outline" onClick={() => setIsApproveDialogOpen(false)} className="flex-1">إلغاء</Button>
+            <Button onClick={handleFinalApprove} disabled={!selectedRoleId} className="flex-1 bg-green-600 hover:bg-green-700">تفعيل الحساب</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
-
-// جلب الأدوار الديناميكية من Firestore
-const { data: dynamicRoles } = useFirestoreCollection('roles')
-
-// تحويل الأدوار لشكل يمكن استخدامه في الجدول
-const rolesMap = React.useMemo(() => {
-  const map: Record<string, any> = {}
-  dynamicRoles.forEach(role => {
-    map[role.id] = { ar: role.nameAr, en: role.nameEn, color: role.color || 'bg-slate-100' }
-  })
-  return map
-}, [dynamicRoles])
