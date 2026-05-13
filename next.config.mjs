@@ -4,6 +4,7 @@ const nextConfig = {
   // Use 'standalone' for Docker / Node server deployment
   output: process.env.BUILD_OUTPUT === 'export' ? 'export' : 'standalone',
   eslint: { ignoreDuringBuilds: true },
+  eslint: { ignoreDuringBuilds: true },
   typescript: {
     ignoreBuildErrors: true,
   },
