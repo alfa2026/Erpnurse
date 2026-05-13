@@ -3,181 +3,69 @@
 import * as React from 'react'
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
-import { HeartPulse, ChevronDown, LogOut } from 'lucide-react'
+import { 
+  LayoutDashboard, Users, ShieldCheck, 
+  Stethoscope, Pill, Wallet, Settings, Hospital 
+} from 'lucide-react'
+import { cn } from '@/lib/utils'
+import { usePermissions } from '@/hooks/use-permissions'
 
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarGroupLabel,
-  SidebarHeader,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSub,
-  SidebarMenuSubButton,
-  SidebarMenuSubItem,
-} from '@/components/ui/sidebar'
-import {
-  Collapsible,
-  CollapsibleContent,
-  CollapsibleTrigger,
-} from '@/components/ui/collapsible'
-import { Avatar, AvatarFallback } from '@/components/ui/avatar'
-import { navigationConfig } from '@/config/navigation'
-import { useAuth } from '@/contexts/auth-context'
-import { useLang } from '@/contexts/lang-context'
+const NAVIGATION_ITEMS = [
+  { title: 'الرئيسية', href: '/dashboard', icon: LayoutDashboard, permission: 'dashboard.view' },
+  { title: 'الموظفون', href: '/admin/users', icon: Users, permission: 'users.manage' },
+  { title: 'الصلاحيات', href: '/admin/roles', icon: ShieldCheck, permission: 'roles.manage' },
+  { title: 'التمريض', href: '/clinical/nursing', icon: Stethoscope, permission: 'patients.view' },
+  { title: 'الصيدلية', href: '/pharmacy/inventory', icon: Pill, permission: 'inventory.manage' },
+  { title: 'الحسابات', href: '/finance/billing', icon: Wallet, permission: 'billing.manage' },
+]
 
-export function AppSidebar() {
+export default function AppSidebar() {
   const pathname = usePathname()
-  const { user, hasPermission, logout } = useAuth()
-  const { isAr } = useLang()
-
-  // Defer everything that differs between server/client to after mount
-  const [mounted, setMounted] = React.useState(false)
-  React.useEffect(() => {
-    setMounted(true)
-  }, [])
-
-  const isActive = (href: string) => {
-    if (!mounted) return false
-    return pathname === href || pathname.startsWith(href + '/')
-  }
-
-  // On server (and first paint) render all items; after mount filter by permission
-  const getFilteredItems = (items: typeof navigationConfig[0]['items']) => {
-    if (!mounted) return items
-    return items.filter((item) => !item.permission || hasPermission(item.permission))
-  }
+  const { hasPermission, isLoading } = usePermissions()
 
   return (
-    <Sidebar side="right" collapsible="icon">
-      <SidebarHeader className="border-b border-sidebar-border">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" asChild>
-              <Link href="/dashboard">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground shrink-0">
-                  <HeartPulse className="h-5 w-5" />
-                </div>
-                <div className="flex flex-col gap-0.5 leading-none min-w-0">
-                  <span className="font-bold text-base truncate">PRO Nurse</span>
-                  <span className="text-xs text-sidebar-foreground/70 truncate">
-                    {isAr ? 'نظام إدارة التمريض' : 'Nursing Management'}
-                  </span>
-                </div>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-      </SidebarHeader>
+    <aside className="w-64 bg-slate-900 h-screen flex flex-col text-right" dir="rtl">
+      {/* Logo */}
+      <div className="p-6 flex items-center justify-between border-b border-slate-800">
+        <div className="bg-blue-600 p-2 rounded-lg">
+          <Hospital className="h-6 w-6 text-white" />
+        </div>
+        <span className="text-white font-bold text-xl">نظام تمريض</span>
+      </div>
 
-      <SidebarContent>
-        {navigationConfig.map((group) => {
-          const filteredItems = getFilteredItems(group.items)
-          if (filteredItems.length === 0) return null
+      {/* Nav Links */}
+      <nav className="flex-1 p-4 space-y-2 mt-4 overflow-y-auto">
+        {NAVIGATION_ITEMS.map((item) => {
+          // فحص الصلاحية لكل عنصر
+          if (!hasPermission(item.permission)) return null
+
+          const isActive = pathname === item.href
 
           return (
-            <SidebarGroup key={group.title}>
-              <SidebarGroupLabel>
-                {isAr ? group.titleAr : group.title}
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu>
-                  {filteredItems.map((item) => {
-                    const active = isActive(item.href)
-                    const Icon = item.icon
-
-                    if (item.children && item.children.length > 0) {
-                      return (
-                        <Collapsible key={item.href} asChild defaultOpen={active}>
-                          <SidebarMenuItem>
-                            <CollapsibleTrigger asChild>
-                              <SidebarMenuButton tooltip={isAr ? item.titleAr : item.title}>
-                                <Icon className="h-4 w-4" />
-                                <span>{isAr ? item.titleAr : item.title}</span>
-                                <ChevronDown className="mr-auto h-4 w-4 transition-transform group-data-[state=open]/collapsible:rotate-180" />
-                              </SidebarMenuButton>
-                            </CollapsibleTrigger>
-                            <CollapsibleContent>
-                              <SidebarMenuSub>
-                                {item.children.map((subItem) => (
-                                  <SidebarMenuSubItem key={subItem.href}>
-                                    <SidebarMenuSubButton
-                                      asChild
-                                      isActive={mounted && pathname === subItem.href}
-                                    >
-                                      <Link href={subItem.href}>
-                                        <span>{isAr ? subItem.titleAr : subItem.title}</span>
-                                      </Link>
-                                    </SidebarMenuSubButton>
-                                  </SidebarMenuSubItem>
-                                ))}
-                              </SidebarMenuSub>
-                            </CollapsibleContent>
-                          </SidebarMenuItem>
-                        </Collapsible>
-                      )
-                    }
-
-                    return (
-                      <SidebarMenuItem key={item.href}>
-                        <SidebarMenuButton
-                          asChild
-                          isActive={active}
-                          tooltip={isAr ? item.titleAr : item.title}
-                        >
-                          <Link href={item.href}>
-                            <Icon className="h-4 w-4" />
-                            <span>{isAr ? item.titleAr : item.title}</span>
-                          </Link>
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    )
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+            <Link
+              key={item.href}
+              href={item.href}
+              className={cn(
+                "flex items-center gap-3 px-4 py-3 rounded-xl transition-all duration-200 group",
+                isActive 
+                  ? "bg-blue-600 text-white shadow-lg shadow-blue-500/20" 
+                  : "text-slate-400 hover:bg-slate-800 hover:text-white"
+              )}
+            >
+              <item.icon className={cn(
+                "h-5 w-5",
+                isActive ? "text-white" : "text-slate-500 group-hover:text-blue-400"
+              )} />
+              <span className="font-bold">{item.title}</span>
+            </Link>
           )
         })}
-      </SidebarContent>
+      </nav>
 
-      <SidebarFooter className="border-t border-sidebar-border">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton size="lg" className="gap-3">
-              <Avatar className="h-8 w-8 shrink-0">
-                <AvatarFallback className="bg-primary/10 text-primary text-sm font-bold">
-                  {user?.nameAr?.charAt(0) || 'م'}
-                </AvatarFallback>
-              </Avatar>
-              <div className="flex flex-col gap-0.5 leading-none min-w-0 flex-1">
-                <span className="font-semibold text-sm truncate">{user?.nameAr}</span>
-                <span className="text-xs text-sidebar-foreground/70">
-                  {user?.role === 'admin' && (isAr ? 'مدير النظام' : 'System Admin')}
-                  {user?.role === 'head_nurse' && (isAr ? 'رئيس التمريض' : 'Head Nurse')}
-                  {user?.role === 'supervisor' && (isAr ? 'مشرف' : 'Supervisor')}
-                  {user?.role === 'staff' && (isAr ? 'موظف' : 'Staff')}
-                </span>
-              </div>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-          {logout && (
-            <SidebarMenuItem>
-              <SidebarMenuButton
-                className="text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-colors"
-                onClick={() => logout()}
-                tooltip={isAr ? "تسجيل الخروج" : "Logout"}
-              >
-                <LogOut className="h-4 w-4" />
-                <span>{isAr ? "تسجيل الخروج" : "Logout"}</span>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          )}
-        </SidebarMenu>
-      </SidebarFooter>
-    </Sidebar>
+      {/* Bottom Profile/Settings */}
+      <div className="p-4 border-t border-slate-800 bg-slate-900/50">
+        <p className="text-[10px] text-slate-500 text-center mb-2 font-mono">ERP SYSTEM v1.0</p>
+      </div>
+    </aside>
   )
 }
