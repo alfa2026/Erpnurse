@@ -30,7 +30,9 @@ import {
   X, ChevronDown,
 } from 'lucide-react'
 import { cn } from '@/lib/utils'
-import { WhatsAppSendDialog } from '@/components/whatsapp-send'
+// غير السطر 33 للسطر ده بالظبط:
+import WhatsAppSend from '@/components/whatsapp-send'
+
 import { useLang } from '@/contexts/lang-context'
 import { useFirestoreCollection } from '@/hooks/use-firestore'
 import { COLLECTIONS } from '@/types'
