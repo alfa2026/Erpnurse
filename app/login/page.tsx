@@ -12,7 +12,8 @@ import { Label }    from '@/components/ui/label'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/dialog'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { useAuth, DEMO_EMPLOYEES } from '@/contexts/auth-context'
+// تم إزالة DEMO_EMPLOYEES لأنه لم يعد موجوداً في الـ context الجديد
+import { useAuth } from '@/contexts/auth-context' 
 import { useLang }  from '@/contexts/lang-context'
 import { toast }    from 'sonner'
 
@@ -29,7 +30,8 @@ function GoogleIcon() {
 
 export default function LoginPage() {
   const router = useRouter()
-  const { login, loginWithGoogle, loginWithEmployeeCode, register, changePassword } = useAuth()
+  // تم إزالة changePassword من الـ destructuring لأننا سنعتمد على التغيير اليدوي للأدمن حالياً
+  const { login, loginWithGoogle, loginWithEmployeeCode, register } = useAuth()
   const { lang, toggleLang } = useLang()
   const isAr = lang === 'ar'
 
@@ -61,7 +63,6 @@ export default function LoginPage() {
   const [mustChange,  setMustChange]  = useState(false)
   const [newPwd,      setNewPwd]      = useState('')
   const [confirmPwd,  setConfirmPwd]  = useState('')
-  const [pendingUser, setPendingUser] = useState('')
 
   // IT support
   const [itOpen, setItOpen] = useState(false)
@@ -79,7 +80,7 @@ export default function LoginPage() {
       if (!res.success) {
         toast.error(isAr ? 'خطأ في بيانات الدخول' : 'Login failed', { description: res.error })
       } else if (res.mustChangePassword) {
-        setPendingUser(empCode.trim()); setMustChange(true)
+        setMustChange(true)
       } else {
         toast.success(isAr ? 'مرحباً بك' : 'Welcome back!'); router.push('/dashboard')
       }
@@ -99,7 +100,7 @@ export default function LoginPage() {
       if (!res.success) {
         toast.error(isAr ? 'خطأ في بيانات الدخول' : 'Login failed', { description: res.error })
       } else if (res.mustChangePassword) {
-        setPendingUser(adminEmail.trim()); setMustChange(true)
+        setMustChange(true)
       } else {
         toast.success(isAr ? 'مرحباً بك' : 'Welcome back!'); router.push('/dashboard')
       }
@@ -114,12 +115,6 @@ export default function LoginPage() {
       if (res.success) {
         toast.success(isAr ? 'تم تسجيل الدخول بنجاح' : 'Signed in!')
         router.push('/dashboard')
-      } else if ((res as { pendingApproval?: boolean }).pendingApproval) {
-        toast.info(
-          isAr ? 'في انتظار موافقة الإدارة' : 'Awaiting admin approval',
-          { description: isAr ? 'سيتم إشعارك عند تفعيل الحساب' : "We'll notify you when approved" }
-        )
-        router.push('/pending-approval')
       } else {
         toast.error(isAr ? 'فشل تسجيل الدخول بـ Google' : 'Google sign-in failed', { description: res.error })
       }
@@ -149,17 +144,11 @@ export default function LoginPage() {
     } finally { setSLoading(false) }
   }
 
-  /* ── Change Password ─────────────────────────── */
+  /* ── Change Password (Dummy Implementation for Build) ─────────────────────────── */
   const handleChangePwd = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (newPwd.length < 6) { toast.error(isAr ? 'كلمة المرور 6 أحرف على الأقل' : 'Min 6 chars'); return }
-    if (newPwd !== confirmPwd) { toast.error(isAr ? 'كلمتا المرور غير متطابقتين' : 'Passwords do not match'); return }
-    const emp = DEMO_EMPLOYEES.find(e => e.employeeCode.toLowerCase() === pendingUser.toLowerCase())
-    if (emp) {
-      await changePassword(emp.id, newPwd)
-      toast.success(isAr ? 'تم تغيير كلمة المرور' : 'Password changed')
-      setMustChange(false); router.push('/dashboard')
-    }
+    toast.info(isAr ? "يرجى التواصل مع الأدمن لتغيير كلمة المرور في هذه النسخة" : "Contact Admin to change password in this version")
+    setMustChange(false)
   }
 
   /* ═════════════════════════════════════════════
@@ -182,7 +171,6 @@ export default function LoginPage() {
       </button>
 
       <div className="w-full max-w-md space-y-5">
-        {/* Logo */}
         <div className="text-center space-y-2">
           <div className="flex justify-center">
             <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-teal-600 shadow-lg">
@@ -193,7 +181,6 @@ export default function LoginPage() {
           <p className="text-xs text-slate-500">{isAr ? 'نظام إدارة المستشفيات' : 'Hospital Information System'}</p>
         </div>
 
-        {/* Card */}
         <Card className="shadow-xl border-0 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm overflow-hidden">
           <div className="h-1 w-full bg-gradient-to-r from-teal-500 to-blue-500" />
           <CardHeader className="pb-2 pt-5 text-center">
@@ -202,7 +189,6 @@ export default function LoginPage() {
           </CardHeader>
           <CardContent className="space-y-4 px-5 pb-5">
 
-            {/* Tabs */}
             <Tabs value={tab} onValueChange={(v) => setTab(v as typeof tab)}>
               <TabsList className="w-full grid grid-cols-3 h-9">
                 <TabsTrigger value="employee" className="text-xs gap-1">
@@ -217,7 +203,6 @@ export default function LoginPage() {
               </TabsList>
             </Tabs>
 
-            {/* ── Employee ─────────────────────────── */}
             {tab === 'employee' && (
               <form onSubmit={handleEmployee} className="space-y-3">
                 <div className="space-y-1">
@@ -246,7 +231,6 @@ export default function LoginPage() {
               </form>
             )}
 
-            {/* ── Admin Email ───────────────────────── */}
             {tab === 'admin' && (
               <form onSubmit={handleAdmin} className="space-y-3">
                 <div className="space-y-1">
@@ -275,7 +259,6 @@ export default function LoginPage() {
               </form>
             )}
 
-            {/* ── Google ────────────────────────────── */}
             {tab === 'google' && (
               <div className="space-y-3 pt-1">
                 <Button variant="outline" className="w-full h-10 gap-2 text-sm border-2 hover:border-teal-400"
@@ -284,11 +267,9 @@ export default function LoginPage() {
                     ? <><svg className="animate-spin h-4 w-4" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"/></svg>{isAr ? 'جاري الاتصال...' : 'Connecting...'}</>
                     : <><GoogleIcon />{isAr ? 'تسجيل الدخول بـ Google' : 'Sign in with Google'}</>}
                 </Button>
-                <p className="text-center text-xs text-slate-400">{isAr ? 'موظف جديد؟ سيُنشأ حسابك تلقائياً بانتظار الموافقة' : 'New employee? Account created pending admin approval.'}</p>
               </div>
             )}
 
-            {/* Divider + Signup */}
             <div className="relative"><div className="absolute inset-0 flex items-center"><span className="w-full border-t border-slate-200" /></div><div className="relative flex justify-center"><span className="bg-white dark:bg-slate-900 px-2 text-xs text-slate-400">{isAr ? 'أو' : 'or'}</span></div></div>
             <Button variant="ghost" className="w-full h-8 text-xs text-teal-600 hover:bg-teal-50" onClick={() => setSignupOpen(true)}>
               <UserPlus className="h-3.5 w-3.5 mr-1" />{isAr ? 'إنشاء حساب جديد' : 'Create New Account'}
@@ -297,24 +278,23 @@ export default function LoginPage() {
         </Card>
       </div>
 
-      {/* ── Change Password Dialog ──────────────────── */}
-      <Dialog open={mustChange} onOpenChange={() => {}}>
+      {/* Change Pwd Dialog */}
+      <Dialog open={mustChange} onOpenChange={setMustChange}>
         <DialogContent><DialogHeader>
-          <DialogTitle>{isAr ? 'تغيير كلمة المرور مطلوب' : 'Password Change Required'}</DialogTitle>
-          <DialogDescription>{isAr ? 'يجب تغيير كلمة المرور قبل المتابعة' : 'Must change password before continuing'}</DialogDescription>
+          <DialogTitle>{isAr ? 'تغيير كلمة المرور' : 'Change Password'}</DialogTitle>
+          <DialogDescription>{isAr ? 'يجب تحديث كلمة المرور للمتابعة' : 'Must update password to continue'}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleChangePwd} className="space-y-3 pt-2">
           <div className="space-y-1"><Label className="text-xs">{isAr ? 'كلمة المرور الجديدة' : 'New Password'}</Label><Input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="••••••••" dir="ltr" /></div>
           <div className="space-y-1"><Label className="text-xs">{isAr ? 'تأكيد كلمة المرور' : 'Confirm Password'}</Label><Input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} placeholder="••••••••" dir="ltr" /></div>
-          <Button type="submit" className="w-full bg-teal-600 hover:bg-teal-700">{isAr ? 'تغيير وتسجيل الدخول' : 'Change & Sign In'}</Button>
+          <Button type="submit" className="w-full bg-teal-600 hover:bg-teal-700">{isAr ? 'تحديث' : 'Update'}</Button>
         </form></DialogContent>
       </Dialog>
 
-      {/* ── Signup Dialog ───────────────────────────── */}
+      {/* Signup Dialog */}
       <Dialog open={signupOpen} onOpenChange={setSignupOpen}>
         <DialogContent><DialogHeader>
           <DialogTitle>{isAr ? 'إنشاء حساب جديد' : 'Create New Account'}</DialogTitle>
-          <DialogDescription>{isAr ? 'سيُراجع طلبك من قِبل الإدارة' : 'Your request will be reviewed by admin'}</DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSignup} className="space-y-3 pt-2">
           <div className="space-y-1"><Label className="text-xs">{isAr ? 'الاسم الكامل' : 'Full Name'}</Label><Input value={sName} onChange={e => setSName(e.target.value)} placeholder={isAr ? 'اسمك الكامل' : 'Your full name'} /></div>
@@ -326,19 +306,13 @@ export default function LoginPage() {
         </form></DialogContent>
       </Dialog>
 
-      {/* ── IT Support Dialog ───────────────────────── */}
+      {/* IT Support Dialog */}
       <Dialog open={itOpen} onOpenChange={setItOpen}>
         <DialogContent><DialogHeader>
           <DialogTitle className="flex items-center gap-2"><Headphones className="h-5 w-5 text-teal-600" />{isAr ? 'الدعم الفني IT' : 'IT Support'}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-3 pt-2">
-          <div className="bg-teal-50 dark:bg-teal-950 rounded-lg p-4 space-y-2 text-sm">
-            <p className="font-semibold text-teal-700">{isAr ? 'بيانات الأدمن الأول:' : 'First Admin Credentials:'}</p>
-            <p dir="ltr" className="text-slate-600">Email: <strong>admin@pronurse.com</strong></p>
-            <p dir="ltr" className="text-slate-600">Password: <strong>Admin@1234</strong></p>
-            <p dir="ltr" className="text-slate-600">Emp Code: <strong>ADM001</strong></p>
-          </div>
-          <p className="text-xs text-slate-500 text-center">{isAr ? 'تأكد من إضافة Firebase env vars في Vercel Dashboard' : 'Set Firebase env vars in Vercel Dashboard → Settings → Environment Variables'}</p>
+        <div className="space-y-3 pt-2 text-center">
+            <p className="text-sm">{isAr ? "يرجى مراجعة إعدادات Firebase" : "Please check Firebase settings"}</p>
         </div></DialogContent>
       </Dialog>
     </div>
