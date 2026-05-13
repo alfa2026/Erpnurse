@@ -12,6 +12,7 @@ interface Props {
   onOpenChange: (open: boolean) => void
 }
 
+// التصدير هنا Default Export
 export default function WhatsAppSend({ open, onOpenChange }: Props) {
   const { lang } = useLang()
   const isAr = lang === 'ar'
@@ -20,7 +21,7 @@ export default function WhatsAppSend({ open, onOpenChange }: Props) {
 
   const handleSend = () => {
     if (!phone || !message) {
-      toast.error(isAr ? "اكمل البيانات" : "Complete data")
+      toast.error(isAr ? "يرجى إكمال البيانات" : "Please complete data")
       return
     }
     const url = `https://wa.me/${phone}?text=${encodeURIComponent(message)}`
@@ -30,29 +31,30 @@ export default function WhatsAppSend({ open, onOpenChange }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle>{isAr ? "إرسال واتساب" : "Send WhatsApp"}</DialogTitle>
+          <DialogTitle>{isAr ? "إرسال رسالة واتساب" : "Send WhatsApp Message"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 pt-4">
-          <Input 
-            placeholder={isAr ? "رقم الهاتف (بمفتاح الدولة)" : "Phone number"} 
-            value={phone} 
-            onChange={(e) => setPhone(e.target.value)} 
-          />
-          <Input 
-            placeholder={isAr ? "الرسالة" : "Message"} 
-            value={message} 
-            onChange={(e) => setMessage(e.target.value)} 
-          />
-          <Button className="w-full" onClick={handleSend}>
-            {isAr ? "إرسال" : "Send"}
+        <div className="space-y-4 py-4">
+          <div className="space-y-2">
+            <Input 
+              placeholder={isAr ? "رقم الهاتف (مثال: 201234567890)" : "Phone number"} 
+              value={phone} 
+              onChange={(e) => setPhone(e.target.value)} 
+            />
+          </div>
+          <div className="space-y-2">
+            <Input 
+              placeholder={isAr ? "اكتب رسالتك هنا..." : "Type message..."} 
+              value={message} 
+              onChange={(e) => setMessage(e.target.value)} 
+            />
+          </div>
+          <Button className="w-full bg-green-600 hover:bg-green-700" onClick={handleSend}>
+            {isAr ? "فتح واتساب" : "Open WhatsApp"}
           </Button>
         </div>
       </DialogContent>
     </Dialog>
   )
-}
-export default function WhatsAppSend({ open, onOpenChange }: Props) {
-  // ... الكود اللي بعتهولك المرة اللي فاتت ...
 }
