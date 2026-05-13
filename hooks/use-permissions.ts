@@ -6,20 +6,21 @@ import { COLLECTIONS, Role } from '@/types'
 
 export function usePermissions() {
   const { user } = useAuth()
-  const { data: roles } = useFirestoreCollection(COLLECTIONS.ROLES)
+  // جلب الأدوار من كولكشن roles حسب التسمية في ملف الـ types
+  const { data: roles, loading } = useFirestoreCollection(COLLECTIONS.ROLES)
 
   const hasPermission = (permissionId: string) => {
     if (!user || !roles) return false
 
-    // السوبر أدمن مسموح له بكل شيء دائماً
+    // السوبر أدمن له صلاحية كاملة دائماً
     if (user.role === 'super_admin') return true
 
-    // البحث عن الدور المربوط بالموظف
+    // البحث عن الدور المربوط بالموظف باستخدام roleId
     const userRole = roles.find((r: Role) => r.id === user.roleId)
     
-    // التحقق هل الصلاحية المطلوبة موجودة في مصفوفة صلاحيات الدور ده
+    // فحص هل الـ permissionId موجود في مصفوفة الصلاحيات (string[])
     return userRole?.permissions?.includes(permissionId) || false
   }
 
-  return { hasPermission, isLoading: !roles }
+  return { hasPermission, isLoading: loading }
 }
