@@ -3,7 +3,9 @@
 import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
-import AppSidebar from '@/components/layout/app-sidebar'
+// غير السطر رقم 6 للسطر ده بالظبط:
+import { AppSidebar } from '@/components/layout/app-sidebar'
+
 import { Topbar } from '@/components/layout/topbar'
 import { useAuth } from '@/contexts/auth-context'
 
