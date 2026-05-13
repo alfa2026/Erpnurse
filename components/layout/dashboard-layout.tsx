@@ -1,37 +1,34 @@
 'use client'
 
-import { useEffect } from 'react'
+import { ReactNode } from 'react'
 import { useRouter } from 'next/navigation'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
-// غير السطر رقم 6 للسطر ده بالظبط:
+// تم التعديل هنا لإضافة الأقواس {} لتطابق الـ Named Export
 import { AppSidebar } from '@/components/layout/app-sidebar'
-
 import { Topbar } from '@/components/layout/topbar'
 import { useAuth } from '@/contexts/auth-context'
 
-interface DashboardLayoutProps {
-  children: React.ReactNode
-}
-
-export function DashboardLayout({ children }: DashboardLayoutProps) {
-  const { isAuthenticated } = useAuth()
+export default function DashboardLayout({ children }: { children: ReactNode }) {
+  const { user, loading } = useAuth()
   const router = useRouter()
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      router.push('/login')
-    }
-  }, [isAuthenticated, router])
-
-  if (!isAuthenticated) return null
+  if (loading) return <div className="h-screen flex items-center justify-center">Loading...</div>
+  if (!user) {
+    router.push('/login')
+    return null
+  }
 
   return (
-    <SidebarProvider defaultOpen={true}>
-      <AppSidebar />
-      <SidebarInset>
-        <Topbar />
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
-      </SidebarInset>
+    <SidebarProvider>
+      <div className="flex h-screen w-full bg-slate-50 dark:bg-slate-950" dir="rtl">
+        <AppSidebar />
+        <SidebarInset className="flex flex-col flex-1 overflow-hidden">
+          <Topbar />
+          <main className="flex-1 overflow-y-auto p-4 md:p-6">
+            {children}
+          </main>
+        </SidebarInset>
+      </div>
     </SidebarProvider>
   )
 }
