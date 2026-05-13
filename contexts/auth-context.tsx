@@ -8,10 +8,9 @@ import {
   signOut,
   onAuthStateChanged,
   createUserWithEmailAndPassword,
-  updatePassword,
   User as FirebaseUser,
 } from 'firebase/auth'
-import { doc, onSnapshot, getDoc, setDoc, query, collection, where, getDocs, serverTimestamp } from 'firebase/firestore'
+import { doc, onSnapshot, getDoc, setDoc, query, collection, where, getDocs } from 'firebase/firestore'
 import { auth, db } from '@/lib/firebase'
 import { User, UserRole, COLLECTIONS } from '@/types'
 import { useRouter, usePathname } from 'next/navigation'
@@ -31,7 +30,6 @@ interface AuthContextType {
   loginWithGoogle: () => Promise<{ success: boolean; error?: string }>
   logout: () => Promise<void>
   register: (data: RegisterData) => Promise<{ success: boolean; error?: string }>
-  changePassword: (currentPassword: string, newPassword: string) => Promise<{ success: boolean; error?: string }>
   hasPermission: (permission: string) => boolean
   hasAnyPermission: (permissions: string[]) => boolean
   hasAllPermissions: (permissions: string[]) => boolean
@@ -46,13 +44,6 @@ interface RegisterData {
   phone?: string
   department?: string
   departmentId?: string
-}
-
-// الصلاحيات (ستُجلب من Firestore لاحقاً ولكن نتركها هنا كمرجع للأدوار)
-const ROLE_PERMISSIONS: Record<string, string[]> = {
-  super_admin: ['all'], // سيتم التعامل معها كـ Full Access
-  nurse: ['dashboard.view', 'attendance.create', 'profile.edit'],
-  // أضف باقي الأدوار هنا...
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined)
@@ -71,13 +62,28 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       if (fbUser) {
         setFirebaseUser(fbUser)
         
-        // استخدام onSnapshot لمراقبة حالة المستخدم لحظياً
         const userDocRef = doc(db, COLLECTIONS.USERS, fbUser.uid)
-        const unsubscribeDoc = onSnapshot(userDocRef, (docSnap) => {
+        
+        // استخدام onSnapshot لمراقبة حالة المستخدم لحظياً
+        const unsubscribeDoc = onSnapshot(userDocRef, async (docSnap) => {
           if (docSnap.exists()) {
             const userData = docSnap.data() as User
             setUser({ ...userData, id: docSnap.id })
-            setPermissions(ROLE_PERMISSIONS[userData.role] || [])
+
+            // --- جلب الصلاحيات ديناميكياً من جدول الـ Roles ---
+            if (userData.role === 'super_admin') {
+              setPermissions(['all']) 
+            } else if (userData.roleId) {
+              try {
+                const roleSnap = await getDoc(doc(db, COLLECTIONS.ROLES, userData.roleId))
+                if (roleSnap.exists()) {
+                  setPermissions(roleSnap.data().permissions || [])
+                }
+              } catch (error) {
+                console.error("Error fetching role permissions:", error)
+                setPermissions([])
+              }
+            }
 
             // التوجيه التلقائي بناءً على الحالة
             if (userData.status === 'pending_approval' && pathname !== '/pending-approval') {
@@ -215,7 +221,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       loginWithGoogle,
       logout,
       register,
-      changePassword: async () => ({ success: false }), // تُنفذ عند الحاجة
       hasPermission,
       hasAnyPermission: (perms) => perms.some(p => hasPermission(p)),
       hasAllPermissions: (perms) => perms.every(p => hasPermission(p)),
