@@ -4,10 +4,9 @@ import * as React from 'react'
 import { useState } from 'react'
 import {
   LayoutDashboard, Plus, Edit, Trash2, BarChart3, PieChart, Activity, 
-  Users, Calendar, Clock, Bell, TrendingUp, Save, RotateCcw,
+  Users, Calendar, Clock, Bell, TrendingUp, Save, RotateCcw, Bed, Building2
 } from 'lucide-react'
 
-// استيراد المكونات مع التأكد من وجودها
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
@@ -17,8 +16,6 @@ import { Separator } from '@/components/ui/separator'
 import { toast } from 'sonner'
 import { cn } from '@/lib/utils'
 
-// المكونات اللي كانت بتعمل مشاكل تم استيرادها بحذر
-import * as SelectPrimitive from "@radix-ui/react-select"
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select'
@@ -41,17 +38,26 @@ interface DashboardWidget {
   refreshInterval: number
 }
 
-// ─── INITIAL DATA ──────────────────────────────────────
+// ─── البيانات الأصلية كاملة ──────────────────────────────────────
 const INITIAL_WIDGETS: DashboardWidget[] = [
-  { id: 'w1', name: 'Total Staff', nameAr: 'إجمالي الموظفين', type: 'stat_card', size: 'small', icon: 'users', isVisible: true, order: 1, visibleToRoles: ['super_admin'], visibleToDepartments: ['all'], refreshInterval: 60 },
-  { id: 'w2', name: 'Active Shifts', nameAr: 'المناوبات النشطة', type: 'stat_card', size: 'small', icon: 'clock', isVisible: true, order: 2, visibleToRoles: ['super_admin'], visibleToDepartments: ['all'], refreshInterval: 30 },
-  { id: 'w5', name: 'Weekly Shift Chart', nameAr: 'مخطط المناوبات الأسبوعي', type: 'chart', size: 'large', icon: 'bar_chart', isVisible: true, order: 5, visibleToRoles: ['super_admin'], visibleToDepartments: ['all'], refreshInterval: 300 },
+  { id: 'w1', name: 'Total Staff', nameAr: 'إجمالي الموظفين', type: 'stat_card', size: 'small', icon: 'users', isVisible: true, order: 1, visibleToRoles: ['super_admin', 'hospital_admin', 'hr_manager'], visibleToDepartments: ['all'], refreshInterval: 60 },
+  { id: 'w2', name: 'Active Shifts', nameAr: 'المناوبات النشطة', type: 'stat_card', size: 'small', icon: 'clock', isVisible: true, order: 2, visibleToRoles: ['super_admin', 'hospital_admin', 'dept_manager', 'head_nurse'], visibleToDepartments: ['all'], refreshInterval: 30 },
+  { id: 'w3', name: 'Bed Occupancy', nameAr: 'إشغال الأسرة', type: 'stat_card', size: 'small', icon: 'bed', isVisible: true, order: 3, visibleToRoles: ['super_admin', 'hospital_admin', 'dept_manager'], visibleToDepartments: ['medical'], refreshInterval: 30 },
+  { id: 'w4', name: 'Pending Approvals', nameAr: 'الطلبات المعلقة', type: 'stat_card', size: 'small', icon: 'bell', isVisible: true, order: 4, visibleToRoles: ['super_admin', 'hospital_admin', 'hr_manager', 'dept_manager'], visibleToDepartments: ['all'], refreshInterval: 15 },
+  { id: 'w5', name: 'Weekly Shift Chart', nameAr: 'مخطط المناوبات الأسبوعي', type: 'chart', size: 'large', icon: 'bar_chart', isVisible: true, order: 5, visibleToRoles: ['super_admin', 'hospital_admin', 'dept_manager', 'head_nurse'], visibleToDepartments: ['all'], refreshInterval: 300 },
+  { id: 'w6', name: 'Department Analytics', nameAr: 'تحليلات الأقسام', type: 'chart', size: 'medium', icon: 'pie_chart', isVisible: true, order: 6, visibleToRoles: ['super_admin', 'hospital_admin'], visibleToDepartments: ['all'], refreshInterval: 300 },
+  { id: 'w7', name: 'Attendance Summary', nameAr: 'ملخص الحضور', type: 'chart', size: 'medium', icon: 'trending', isVisible: true, order: 7, visibleToRoles: ['super_admin', 'hospital_admin', 'hr_manager', 'dept_manager'], visibleToDepartments: ['all'], refreshInterval: 120 },
+  { id: 'w8', name: 'Recent Activity', nameAr: 'آخر النشاطات', type: 'activity_feed', size: 'medium', icon: 'activity', isVisible: true, order: 8, visibleToRoles: ['super_admin', 'hospital_admin'], visibleToDepartments: ['all'], refreshInterval: 30 },
+  { id: 'w9', name: 'Upcoming Shifts', nameAr: 'المناوبات القادمة', type: 'calendar', size: 'medium', icon: 'calendar', isVisible: true, order: 9, visibleToRoles: ['super_admin', 'hospital_admin', 'dept_manager', 'head_nurse', 'nurse'], visibleToDepartments: ['all'], refreshInterval: 60 },
+  { id: 'w10', name: 'Critical Alerts', nameAr: 'التنبيهات الحرجة', type: 'alert', size: 'full', icon: 'bell', isVisible: true, order: 10, visibleToRoles: ['super_admin', 'hospital_admin'], visibleToDepartments: ['all'], refreshInterval: 10 },
 ]
 
 const ROLES_LIST = [
   { id: 'super_admin', label: 'مدير النظام' },
   { id: 'hospital_admin', label: 'مدير المستشفى' },
-  { id: 'nurse', label: 'ممرض/ة' },
+  { id: 'hr_manager', label: 'مدير الموارد البشرية' },
+  { id: 'dept_manager', label: 'مدير قسم' },
+  { id: 'head_nurse', label: 'رئيسة التمريض' },
 ]
 
 const WIDGET_TYPE_LABELS: Record<string, string> = {
@@ -95,7 +101,7 @@ export default function DashboardConfigPage() {
     }
     setDialogOpen(false)
     setHasChanges(true)
-    toast.success('تم التحديث مؤقتاً')
+    toast.success('تم التحديث')
   }
 
   return (
@@ -103,18 +109,18 @@ export default function DashboardConfigPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-white p-6 rounded-2xl border shadow-sm">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <LayoutDashboard className="h-6 w-6 text-teal-600" />
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2 text-slate-800">
+            <LayoutDashboard className="h-7 w-7 text-teal-600" />
             إعدادات لوحة التحكم
           </h1>
           <p className="text-muted-foreground text-sm">تخصيص عناصر لوحة التحكم حسب الأدوار</p>
         </div>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => setHasChanges(false)}>
+          <Button variant="outline" size="sm" onClick={() => {setWidgets(INITIAL_WIDGETS); setHasChanges(false)}}>
             <RotateCcw className="h-4 w-4 ml-1" /> تراجع
           </Button>
-          <Button className="bg-teal-600 hover:bg-teal-700 text-white" size="sm" onClick={() => toast.success('تم الحفظ')}>
-            <Save className="h-4 w-4 ml-1" /> حفظ النهائي
+          <Button className="bg-teal-600 hover:bg-teal-700 text-white shadow-md" size="sm" onClick={() => {toast.success('تم حفظ الإعدادات'); setHasChanges(false)}} disabled={!hasChanges}>
+            <Save className="h-4 w-4 ml-1" /> حفظ التغييرات
           </Button>
         </div>
       </div>
@@ -122,19 +128,19 @@ export default function DashboardConfigPage() {
       {/* Widgets Grid */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
         {widgets.map((widget) => (
-          <Card key={widget.id} className={cn('transition-all', !widget.isVisible && 'opacity-50 border-dashed')}>
-            <CardContent className="pt-4">
+          <Card key={widget.id} className={cn('transition-all border-none shadow-sm', !widget.isVisible && 'opacity-50 grayscale')}>
+            <CardContent className="pt-5 p-6">
               <div className="flex items-start justify-between mb-4">
-                <div className="flex items-center gap-2">
-                  <div className="h-10 w-10 rounded-lg bg-teal-50 flex items-center justify-center">
+                <div className="flex items-center gap-3">
+                  <div className="h-10 w-10 rounded-xl bg-teal-50 flex items-center justify-center border border-teal-100">
                     <BarChart3 className="h-5 w-5 text-teal-600" />
                   </div>
                   <div>
-                    <h3 className="font-bold text-sm">{widget.nameAr}</h3>
-                    <p className="text-[10px] text-muted-foreground">{WIDGET_TYPE_LABELS[widget.type]}</p>
+                    <h3 className="font-bold text-slate-800 text-sm">{widget.nameAr}</h3>
+                    <p className="text-[10px] text-slate-400">{WIDGET_TYPE_LABELS[widget.type]} • {SIZE_LABELS[widget.size]}</p>
                   </div>
                 </div>
-                {/* Switch البديل لتجنب أخطاء الاستيراد */}
+                {/* Custom Toggle Switch */}
                 <button 
                   onClick={() => toggleVisibility(widget.id)}
                   className={cn("w-10 h-5 rounded-full relative transition-colors", widget.isVisible ? "bg-teal-600" : "bg-slate-300")}
@@ -143,17 +149,17 @@ export default function DashboardConfigPage() {
                 </button>
               </div>
               
-              <div className="flex flex-wrap gap-1 mb-4">
+              <div className="flex flex-wrap gap-1 mb-4 h-12 overflow-hidden items-start">
                 {widget.visibleToRoles.map((r) => (
-                  <Badge key={r} variant="secondary" className="text-[9px]">{r}</Badge>
+                  <Badge key={r} variant="outline" className="text-[9px] bg-slate-50">{r}</Badge>
                 ))}
               </div>
 
-              <div className="flex items-center gap-2 border-t pt-3">
-                <Button variant="ghost" size="sm" className="h-8 text-xs flex-1" onClick={() => openEdit(widget)}>
+              <div className="flex items-center gap-2 border-t pt-4">
+                <Button variant="ghost" size="sm" className="h-8 text-xs flex-1 hover:bg-teal-50 hover:text-teal-600" onClick={() => openEdit(widget)}>
                   <Edit className="h-3 w-3 ml-1" /> تعديل
                 </Button>
-                <Button variant="ghost" size="sm" className="h-8 text-xs text-destructive flex-1">
+                <Button variant="ghost" size="sm" className="h-8 text-xs text-destructive flex-1 hover:bg-red-50">
                   <Trash2 className="h-3 w-3 ml-1" /> حذف
                 </Button>
               </div>
@@ -164,20 +170,20 @@ export default function DashboardConfigPage() {
 
       {/* Edit Dialog */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-md bg-white">
+        <DialogContent className="max-w-md bg-white rounded-2xl">
           <DialogHeader>
-            <DialogTitle className="text-right">تعديل العنصر</DialogTitle>
+            <DialogTitle className="text-right font-bold text-slate-800">تعديل العنصر</DialogTitle>
           </DialogHeader>
           <div className="grid gap-4 py-4" dir="rtl">
             <div className="space-y-2 text-right">
-              <Label>الاسم بالعربي</Label>
-              <Input value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} />
+              <Label className="text-slate-600">الاسم بالعربي</Label>
+              <Input className="rounded-lg" value={form.nameAr} onChange={(e) => setForm({ ...form, nameAr: e.target.value })} />
             </div>
             <div className="grid grid-cols-2 gap-4 text-right">
               <div className="space-y-2">
-                <Label>النوع</Label>
+                <Label className="text-slate-600">النوع</Label>
                 <Select value={form.type} onValueChange={(v: any) => setForm({ ...form, type: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="rounded-lg"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(WIDGET_TYPE_LABELS).map(([k, v]) => (
                       <SelectItem key={k} value={k}>{v}</SelectItem>
@@ -186,9 +192,9 @@ export default function DashboardConfigPage() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>الحجم</Label>
+                <Label className="text-slate-600">الحجم</Label>
                 <Select value={form.size} onValueChange={(v: any) => setForm({ ...form, size: v })}>
-                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="rounded-lg"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {Object.entries(SIZE_LABELS).map(([k, v]) => (
                       <SelectItem key={k} value={k}>{v}</SelectItem>
@@ -197,10 +203,14 @@ export default function DashboardConfigPage() {
                 </Select>
               </div>
             </div>
+            <div className="space-y-2 text-right">
+              <Label className="text-slate-600">تحديث كل (ثانية)</Label>
+              <Input type="number" className="rounded-lg" value={form.refreshInterval} onChange={(e) => setForm({ ...form, refreshInterval: +e.target.value })} />
+            </div>
           </div>
-          <DialogFooter className="flex gap-2 justify-start">
-            <Button className="bg-teal-600 hover:bg-teal-700 text-white" onClick={handleSave}>حفظ التغييرات</Button>
-            <Button variant="outline" onClick={() => setDialogOpen(false)}>إلغاء</Button>
+          <DialogFooter className="flex gap-2 justify-start mt-4">
+            <Button className="bg-teal-600 hover:bg-teal-700 text-white px-8 rounded-lg" onClick={handleSave}>حفظ</Button>
+            <Button variant="outline" className="rounded-lg" onClick={() => setDialogOpen(false)}>إلغاء</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
