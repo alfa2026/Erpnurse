@@ -2,268 +2,238 @@
 
 import * as React from 'react'
 import {
-  Shield, Check, X, Plus, Copy, Trash2, Save,
-  ToggleLeft, Search, Users, ChevronDown, ChevronRight,
+  Plus, MoreHorizontal, Shield, UserCog,
+  CheckCircle2, XCircle, Clock, Users, UserCheck, UserX, Trash2, Search
 } from 'lucide-react'
-
 import { Button } from '@/components/ui/button'
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card'
-import { Switch } from '@/components/ui/switch'
+import { Card, CardContent } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
-import { Textarea } from '@/components/ui/textarea'
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogDescription,
-  DialogFooter,
+  DropdownMenu, DropdownMenuContent, DropdownMenuItem,
+  DropdownMenuSeparator, DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription
 } from '@/components/ui/dialog'
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from '@/dropdown-menu' // تأكد من المسار الصحيح في مشروعك
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table'
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue 
+} from '@/components/ui/select'
+import { DataTable, Column } from '@/components/ui/data-table'
 import { toast } from 'sonner'
+import { useLang } from '@/contexts/lang-context'
 import { useFirestoreCollection } from '@/hooks/use-firestore'
 import { COLLECTIONS } from '@/types'
 
-// تحسين: تعريف الوحدات بنصوص عربية واضحة بدلاً من الـ Unicode
-const PERMISSION_MODULES = [
-  {
-    id: 'dashboard', labelAr: 'لوحة التحكم',
-    permissions: [
-      { id: 'dashboard.view', labelAr: 'عرض' },
-      { id: 'dashboard.analytics', labelAr: 'التحليلات' },
-    ],
-  },
-  {
-    id: 'users', labelAr: 'الموظفون',
-    permissions: [
-      { id: 'users.view', labelAr: 'عرض' },
-      { id: 'users.create', labelAr: 'إنشاء' },
-      { id: 'users.edit', labelAr: 'تعديل' },
-      { id: 'users.delete', labelAr: 'حذف' },
-      { id: 'users.approve', labelAr: 'موافقة' },
-    ],
-  },
-  {
-    id: 'roles', labelAr: 'الأدوار والصلاحيات',
-    permissions: [
-      { id: 'roles.manage', labelAr: 'تحكم كامل' },
-    ],
-  },
-  // يمكنك إضافة باقي الوحدات هنا بنفس النمط
-]
-
-export default function RolesPage() {
-  const { data: roles, loading, add, update, remove } = useFirestoreCollection(COLLECTIONS.ROLES)
+export default function UsersPage() {
+  const { lang } = useLang()
+  const isAr = lang === 'ar'
   
-  const [selectedRole, setSelectedRole] = React.useState<any>(null)
-  const [showCreateDialog, setShowCreateDialog] = React.useState(false)
-  const [showMatrixView, setShowMatrixView] = React.useState(false)
-  const [searchQuery, setSearchQuery] = React.useState('')
-  const [expandedModules, setExpandedModules] = React.useState<string[]>([])
-  const [newRole, setNewRole] = React.useState({ name: '', nameAr: '', description: '', descriptionAr: '' })
+  // 1. جلب المستخدمين لحظياً
+  const { data: allUsers, loading, update: updateRecord, remove: deleteRecord } = useFirestoreCollection(COLLECTIONS.USERS)
+  
+  // 2. جلب الأدوار الديناميكية التي أنشأناها في الخطوة السابقة
+  const { data: rolesData } = useFirestoreCollection(COLLECTIONS.ROLES)
 
-  const filteredRoles = roles.filter(r =>
-    r.name?.toLowerCase().includes(searchQuery.toLowerCase()) || r.nameAr?.includes(searchQuery)
-  )
+  const [selectedUser, setSelectedUser] = React.useState<any>(null)
+  const [isApproveDialogOpen, setIsApproveDialogOpen] = React.useState(false)
+  const [selectedRoleId, setSelectedRoleId] = React.useState<string>("")
 
-  // دالة حفظ الصلاحيات في Firestore
-  const togglePermission = async (roleId: string, permissionId: string) => {
-    const role = roles.find(r => r.id === roleId)
-    if (!role || role.isSystem) return
+  // تصفية المستخدمين
+  const activeUsers = allUsers.filter(u => u.status === 'active')
+  const pendingUsers = allUsers.filter(u => u.status === 'pending_approval' || u.status === 'pending' || !u.status)
 
-    const hasPermission = role.permissions?.includes(permissionId)
-    const newPermissions = hasPermission 
-      ? role.permissions.filter((p: string) => p !== permissionId)
-      : [...(role.permissions || []), permissionId]
-
-    try {
-      await update(roleId, { permissions: newPermissions })
-      toast.success('تم تحديث الصلاحية')
-    } catch (err) {
-      toast.error('فشل التحديث')
-    }
+  // دالة فتح نافذة الموافقة
+  const openApproveDialog = (user: any) => {
+    setSelectedUser(user)
+    setIsApproveDialogOpen(true)
   }
 
-  // دالة إنشاء دور جديد في Firestore
-  const handleCreateRole = async () => {
-    if (!newRole.name || !newRole.nameAr) {
-      toast.error('يرجى إدخال اسم الدور')
-      return
-    }
+  // دالة الموافقة النهائية والربط بالدور
+  const handleFinalApprove = async () => {
+    if (!selectedRoleId) return toast.error(isAr ? 'يرجى اختيار دور أولاً' : 'Please select a role')
     
     try {
-      await add({
-        ...newRole,
-        permissions: ['dashboard.view'],
-        isActive: true,
-        isSystem: false,
-        userCount: 0,
-        createdAt: new Date().toISOString()
+      await updateRecord(selectedUser.id, { 
+        status: 'active',
+        role: selectedRoleId,
+        updatedAt: new Date().toISOString() 
       })
-      setShowCreateDialog(false)
-      setNewRole({ name: '', nameAr: '', description: '', descriptionAr: '' })
-      toast.success('تم إنشاء الدور بنجاح')
-    } catch (err) {
-      toast.error('حدث خطأ أثناء الإنشاء')
+      toast.success(isAr ? 'تم تفعيل الحساب بنجاح' : 'Account activated successfully')
+      setIsApproveDialogOpen(false)
+      setSelectedRoleId("")
+    } catch (error) {
+      toast.error('Error updating user')
     }
   }
 
-  const handleDeleteRole = async (roleId: string) => {
-    const role = roles.find(r => r.id === roleId)
-    if (role?.isSystem) {
-      toast.error('لا يمكن حذف دور نظامي')
-      return
-    }
-    if (confirm('هل أنت متأكد من حذف هذا الدور؟')) {
-      await remove(roleId)
-      toast.info('تم الحذف')
+  const handleDelete = async (userId: string) => {
+    if (confirm(isAr ? 'هل أنت متأكد من حذف هذا المستخدم؟' : 'Are you sure?')) {
+      await deleteRecord(userId)
+      toast.info(isAr ? 'تم الحذف' : 'Deleted')
     }
   }
 
-  if (loading) return <div className="p-10 text-center">جاري تحميل الصلاحيات...</div>
+  // دالة مساعدة لعرض اسم الدور ولونه بناءً على البيانات الديناميكية
+  const getRoleBadge = (roleId: string) => {
+    const role = rolesData.find(r => r.id === roleId || r.name === roleId)
+    if (!role) return <Badge variant="outline">{roleId || 'No Role'}</Badge>
+    
+    return (
+      <Badge style={{ backgroundColor: (role.color || '#6366f1') + '20', color: role.color || '#6366f1', borderColor: role.color }}>
+        {isAr ? role.nameAr : role.name}
+      </Badge>
+    )
+  }
+
+  const userColumns: Column<any>[] = [
+    {
+      key: 'name',
+      header: isAr ? 'المستخدم' : 'User',
+      cell: (row) => (
+        <div className="flex items-center gap-3">
+          <Avatar className="h-9 w-9">
+            <AvatarImage src={row.photoURL} />
+            <AvatarFallback>{(row.name || row.displayName || 'U').charAt(0)}</AvatarFallback>
+          </Avatar>
+          <div>
+            <p className="font-medium text-sm">{row.name || row.displayName}</p>
+            <p className="text-xs text-muted-foreground">{row.email}</p>
+          </div>
+        </div>
+      ),
+    },
+    {
+      key: 'role',
+      header: isAr ? 'الدور' : 'Role',
+      cell: (row) => getRoleBadge(row.role),
+    },
+    {
+      key: 'status',
+      header: isAr ? 'الحالة' : 'Status',
+      cell: (row) => (
+        <Badge className={row.status === 'active' ? 'bg-green-500' : 'bg-amber-500'}>
+          {row.status === 'active' ? (isAr ? 'نشط' : 'Active') : (isAr ? 'معلق' : 'Pending')}
+        </Badge>
+      ),
+    },
+    {
+      key: 'actions',
+      header: isAr ? 'الإجراءات' : 'Actions',
+      cell: (row) => (
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="ghost" size="icon"><MoreHorizontal className="h-4 w-4" /></Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end">
+            {row.status !== 'active' && (
+              <DropdownMenuItem onClick={() => openApproveDialog(row)} className="text-green-600">
+                <CheckCircle2 className="h-4 w-4 ml-2" />
+                {isAr ? 'موافقة وتعيين دور' : 'Approve & Assign Role'}
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuItem onClick={() => handleDelete(row.id)} className="text-red-600">
+              <Trash2 className="h-4 w-4 ml-2" />
+              {isAr ? 'حذف' : 'Delete'}
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      ),
+    },
+  ]
+
+  if (loading) return <div className="p-10 text-center">{isAr ? 'جاري التحميل...' : 'Loading...'}</div>
 
   return (
     <div className="space-y-6 p-4">
-      {/* الهيدر وزر الإضافة */}
       <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Shield className="h-6 w-6 text-blue-600" /> إدارة الأدوار والصلاحيات
-          </h1>
-          <p className="text-muted-foreground text-sm">حدد من يمكنه رؤية ماذا في النظام</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={() => setShowMatrixView(!showMatrixView)}>
-            {showMatrixView ? 'عرض البطاقات' : 'عرض المصفوفة'}
-          </Button>
-          <Button onClick={() => setShowCreateDialog(true)}>
-            <Plus className="h-4 w-4 ml-2" /> دور جديد
-          </Button>
-        </div>
+        <h1 className="text-2xl font-bold">{isAr ? 'إدارة طاقم العمل' : 'Staff Management'}</h1>
       </div>
 
-      {/* البحث */}
-      <div className="relative max-w-sm">
-        <Search className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input 
-          placeholder="بحث عن دور..." 
-          value={searchQuery} 
-          onChange={(e) => setSearchQuery(e.target.value)} 
-          className="pr-10" 
-        />
-      </div>
-
-      {/* عرض الأدوار (Cards or Matrix) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* قائمة الأدوار */}
-        <div className="space-y-4">
-          {filteredRoles.map(role => (
-            <Card 
-              key={role.id} 
-              className={`cursor-pointer transition-all ${selectedRole?.id === role.id ? 'ring-2 ring-blue-500 shadow-md' : ''}`}
-              onClick={() => setSelectedRole(role)}
-            >
-              <CardContent className="p-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <Shield className={`h-5 w-5 ${role.isActive ? 'text-blue-600' : 'text-gray-400'}`} />
-                    <div>
-                      <p className="font-bold">{role.nameAr}</p>
-                      <p className="text-xs text-muted-foreground">{role.descriptionAr}</p>
-                    </div>
-                  </div>
-                  {!role.isSystem && (
-                    <Button variant="ghost" size="icon" onClick={() => handleDeleteRole(role.id)} className="text-red-500">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  )}
-                </div>
-                <div className="mt-3 flex gap-2">
-                  <Badge variant="outline">{role.permissions?.length || 0} صلاحية</Badge>
-                  {role.isSystem && <Badge className="bg-gray-100 text-gray-600">نظامي</Badge>}
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-
-        {/* تفاصيل الصلاحيات (الجانب الأيسر) */}
-        <div className="lg:col-span-2">
-          {selectedRole ? (
-            <Card>
-              <CardHeader>
-                <CardTitle>{selectedRole.nameAr}</CardTitle>
-                <CardDescription>تحكم في صلاحيات هذا الدور بدقة</CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {PERMISSION_MODULES.map(module => (
-                  <div key={module.id} className="border rounded-lg p-4">
-                    <h3 className="font-bold mb-3 flex items-center gap-2">
-                      <ChevronRight className="h-4 w-4" /> {module.labelAr}
-                    </h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {module.permissions.map(perm => (
-                        <div key={perm.id} className="flex items-center justify-between bg-gray-50 p-2 rounded">
-                          <span className="text-sm">{perm.labelAr}</span>
-                          <Switch 
-                            disabled={selectedRole.isSystem}
-                            checked={selectedRole.permissions?.includes(perm.id)}
-                            onCheckedChange={() => togglePermission(selectedRole.id, perm.id)}
-                          />
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="h-full flex items-center justify-center border-2 border-dashed rounded-xl p-20 text-gray-400">
-              اختر دوراً من القائمة لعرض وتعديل صلاحياته
+      {/* Cards Statistics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <Card className="bg-blue-50 dark:bg-blue-950/20 border-blue-100">
+          <CardContent className="pt-4 flex items-center gap-3">
+            <Users className="text-blue-600" />
+            <div>
+              <p className="text-2xl font-bold">{activeUsers.length}</p>
+              <p className="text-sm text-muted-foreground">{isAr ? 'موظف نشط' : 'Active Staff'}</p>
             </div>
-          )}
-        </div>
+          </CardContent>
+        </Card>
+        <Card className="bg-amber-50 dark:bg-amber-950/20 border-amber-100">
+          <CardContent className="pt-4 flex items-center gap-3">
+            <Clock className="text-amber-600" />
+            <div>
+              <p className="text-2xl font-bold">{pendingUsers.length}</p>
+              <p className="text-sm text-muted-foreground">{isAr ? 'طلبات معلقة' : 'Pending Requests'}</p>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
-      {/* نافذة إنشاء دور جديد */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
+      <Tabs defaultValue="active">
+        <TabsList>
+          <TabsTrigger value="active">{isAr ? 'الموظفين' : 'Staff'}</TabsTrigger>
+          <TabsTrigger value="pending" className="relative">
+            {isAr ? 'الطلبات الجديدة' : 'New Requests'}
+            {pendingUsers.length > 0 && (
+              <span className="absolute -top-1 -right-1 flex h-4 w-4 items-center justify-center rounded-full bg-red-500 text-[10px] text-white">
+                {pendingUsers.length}
+              </span>
+            )}
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="active">
+          <DataTable columns={userColumns} data={activeUsers} searchKey="name" />
+        </TabsContent>
+
+        <TabsContent value="pending">
+          <DataTable columns={userColumns} data={pendingUsers} searchKey="name" />
+        </TabsContent>
+      </Tabs>
+
+      {/* نافذة اختيار الدور عند الموافقة */}
+      <Dialog open={isApproveDialogOpen} onOpenChange={setIsApproveDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>إنشاء مسمى وظيفي جديد</DialogTitle>
+            <DialogTitle>{isAr ? 'الموافقة على الموظف' : 'Approve User'}</DialogTitle>
+            <DialogDescription>
+              {isAr ? 'يجب تعيين مسمى وظيفي (دور) لهذا المستخدم قبل تفعيله.' : 'Assign a role to this user to activate their account.'}
+            </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label>الاسم (عربي)</Label>
-                <Input value={newRole.nameAr} onChange={(e) => setNewRole({...newRole, nameAr: e.target.value})} />
-              </div>
-              <div className="space-y-2">
-                <Label>Name (English)</Label>
-                <Input value={newRole.name} onChange={(e) => setNewRole({...newRole, name: e.target.value})} />
+          
+          <div className="py-4 space-y-4">
+            <div className="flex items-center gap-3 p-3 border rounded-lg bg-slate-50">
+              <Avatar><AvatarImage src={selectedUser?.photoURL}/></Avatar>
+              <div>
+                <p className="font-bold">{selectedUser?.name || selectedUser?.displayName}</p>
+                <p className="text-xs text-muted-foreground">{selectedUser?.email}</p>
               </div>
             </div>
+
             <div className="space-y-2">
-              <Label>الوصف</Label>
-              <Textarea value={newRole.descriptionAr} onChange={(e) => setNewRole({...newRole, descriptionAr: e.target.value})} />
+              <label className="text-sm font-medium">{isAr ? 'اختر المسمى الوظيفي:' : 'Select Job Role:'}</label>
+              <Select onValueChange={setSelectedRoleId} value={selectedRoleId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={isAr ? 'اختر من الأدوار المتاحة' : 'Select a role'} />
+                </SelectTrigger>
+                <SelectContent>
+                  {rolesData.map((role) => (
+                    <SelectItem key={role.id} value={role.id}>
+                      {isAr ? role.nameAr : role.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
+
           <DialogFooter>
-            <Button onClick={handleCreateRole}>إنشاء وحفظ</Button>
+            <Button variant="outline" onClick={() => setIsApproveDialogOpen(false)}>{isAr ? 'إلغاء' : 'Cancel'}</Button>
+            <Button onClick={handleFinalApprove} disabled={!selectedRoleId}>{isAr ? 'تأكيد وتفعيل' : 'Confirm & Activate'}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
