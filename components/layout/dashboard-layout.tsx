@@ -1,21 +1,30 @@
 'use client'
 
-import { ReactNode } from 'react'
+import { useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
-// تم التعديل هنا لإضافة الأقواس {} لتطابق الـ Named Export
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { Topbar } from '@/components/layout/topbar'
 import { useAuth } from '@/contexts/auth-context'
 
-export default function DashboardLayout({ children }: { children: ReactNode }) {
+export default function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth()
   const router = useRouter()
 
-  if (loading) return <div className="h-screen flex items-center justify-center">Loading...</div>
-  if (!user) {
-    router.push('/login')
-    return null
+  // لو التحميل خلص ومفيش يوزر، يرميه على اللوجن
+  useEffect(() => {
+    if (!loading && !user) {
+      router.replace('/login')
+    }
+  }, [user, loading, router])
+
+  // طول ما هو بيحمل أو مفيش يوزر، ميعرضش حاجة عشان ميعملش Loop
+  if (loading || !user) {
+    return (
+      <div className="h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-10 w-10 border-t-2 border-teal-600"></div>
+      </div>
+    )
   }
 
   return (
