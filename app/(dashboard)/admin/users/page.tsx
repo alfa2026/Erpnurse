@@ -187,3 +187,15 @@ export default function UsersPage() {
     </div>
   )
 }
+
+// جلب الأدوار الديناميكية من Firestore
+const { data: dynamicRoles } = useFirestoreCollection('roles')
+
+// تحويل الأدوار لشكل يمكن استخدامه في الجدول
+const rolesMap = React.useMemo(() => {
+  const map: Record<string, any> = {}
+  dynamicRoles.forEach(role => {
+    map[role.id] = { ar: role.nameAr, en: role.nameEn, color: role.color || 'bg-slate-100' }
+  })
+  return map
+}, [dynamicRoles])
