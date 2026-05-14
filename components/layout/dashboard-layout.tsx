@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, usePathname } from 'next/navigation'
 import { SidebarProvider, SidebarInset } from '@/components/ui/sidebar'
 import { AppSidebar } from '@/components/layout/app-sidebar'
 import { Topbar } from '@/components/layout/topbar'
@@ -12,58 +12,60 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading, user } = useAuth()
   const router = useRouter()
-  const [authChecked, setAuthChecked] = useState(false)
+  const pathname = usePathname()
+  const [isClient, setIsClient] = useState(false)
 
-  // 1. نظام التوجيه: لو مش مسجل دخول، ارميه لصفحة الـ /login فوراً
+  // 1. التأكد من أننا في بيئة المتصفح أولاً لمنع أخطاء الـ Rendering
   useEffect(() => {
-    if (!loading) {
-      if (!isAuthenticated) {
-        router.replace('/login') // يوديه للوجن لو ملوش صلاحية
-      } else {
-        setAuthChecked(true) // مسموح له يشوف الداشبورد
-      }
+    setIsClient(true)
+  }, [])
+
+  // 2. نظام التوجيه الصارم (Redirect Logic)
+  useEffect(() => {
+    if (isClient && !loading && !isAuthenticated) {
+      router.replace('/login')
     }
-  }, [isAuthenticated, loading, router])
+  }, [isAuthenticated, loading, router, isClient])
 
-  // 2. المزامنة السحابية: بتبدأ فقط "بعد" التأكد من تسجيل الدخول
+  // 3. محرك المزامنة "الخلفي" (لا يعيق تحميل الصفحات)
   useEffect(() => {
-    let interval: any;
-    if (isAuthenticated && user?.uid) {
-      const syncData = async () => {
+    if (isAuthenticated && user?.uid && isClient) {
+      const sync = async () => {
         try {
-          // سحب البيانات المخزنة سابقاً للمستخدم
-          const snap = await getDoc(doc(db, "global_sync", user.uid))
+          // جلب البيانات فقط عند أول دخول
+          const snap = await getDoc(doc(db, "cloud_sync", user.uid))
           if (snap.exists()) {
-            const data = snap.data().payload
-            Object.keys(data).forEach(k => localStorage.setItem(k, typeof data[k] === 'object' ? JSON.stringify(data[k]) : data[k]))
+            const data = snap.data().storage
+            Object.keys(data).forEach(key => {
+              if (!localStorage.getItem(key)) { // لا نغير داتا موجودة حالياً
+                localStorage.setItem(key, typeof data[key] === 'object' ? JSON.stringify(data[key]) : data[key])
+              }
+            })
           }
-        } catch (e) { console.log("Sync pull skipped") }
-
-        // رفع البيانات تلقائياً كل دقيقة لعدم إرهاق السيرفر
-        interval = setInterval(async () => {
-          const allLocal: any = {}
-          for (let i = 0; i < localStorage.length; i++) {
-            const k = localStorage.key(i)
-            if (k) try { allLocal[k] = JSON.parse(localStorage.getItem(k) || "") } catch { allLocal[k] = localStorage.getItem(k) }
-          }
-          await setDoc(doc(db, "global_sync", user.uid), { payload: allLocal, updatedAt: new Date() }, { merge: true })
-        }, 60000)
+        } catch (e) { console.log("Silent Sync active") }
       }
-      syncData()
-    }
-    return () => clearInterval(interval)
-  }, [isAuthenticated, user?.uid])
+      sync()
 
-  // شاشة تحميل بسيطة جداً بتظهر ثانية واحدة بس لحد ما يتأكد إنت مين
-  if (loading || (!isAuthenticated && !authChecked)) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-white">
-        <div className="h-10 w-10 border-4 border-teal-600 border-t-transparent rounded-full animate-spin" />
-      </div>
-    )
+      // حفظ تلقائي كل دقيقتين لضمان عدم الكسر
+      const saver = setInterval(() => {
+        const all: any = {}
+        for (let i = 0; i < localStorage.length; i++) {
+          const k = localStorage.key(i)
+          if (k) try { all[k] = JSON.parse(localStorage.getItem(k) || "") } catch { all[k] = localStorage.getItem(k) }
+        }
+        setDoc(doc(db, "cloud_sync", user.uid), { storage: all, lastSeen: new Date() }, { merge: true })
+      }, 120000)
+
+      return () => clearInterval(saver)
+    }
+  }, [isAuthenticated, user?.uid, isClient])
+
+  // شاشة انتظار بيضاء بسيطة جداً (Standard)
+  if (!isClient || loading) {
+    return <div className="min-h-screen bg-white" />
   }
 
-  // لو مش مسجل، الكود اللي فوق هيعمل redirect ومش هيوصل لهنا أصلاً
+  // لو مش مسجل دخول، ما تعرضش أي حاجة من الداشبورد
   if (!isAuthenticated) return null
 
   return (
@@ -72,6 +74,7 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <SidebarInset>
         <Topbar />
         <main className="flex-1 overflow-auto p-4 md:p-6">
+          {/* هنا الـ children هتحمل طبيعي جداً بدون تعليق */}
           {children}
         </main>
       </SidebarInset>
