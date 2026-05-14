@@ -12,7 +12,24 @@ const firebaseConfig = {
   appId: "1:1014206351110:web:27c5949f8dc9a293ad4087",
 }
 
-let app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+// إنشاء التطبيق
+const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0]
+
+// تصدير الأدوات الأساسية
 export const db = getFirestore(app)
 export const auth = getAuth(app)
 export { app }
+
+// ─── الدوال اللي المشروع محتاجها ومسحها الـ AI ──────────
+// دي الدوال اللي سببت الـ 14 خطأ لأنها كانت ناقصة
+export function getFirestoreDb(): Firestore {
+  return db
+}
+
+export function getFirebaseAuth(): Auth {
+  return auth
+}
+
+export function isFirebaseConfigured(): boolean {
+  return true
+}
