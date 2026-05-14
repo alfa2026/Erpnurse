@@ -10,67 +10,44 @@ import { db } from '@/lib/firebase'
 import { doc, getDoc, setDoc } from 'firebase/firestore'
 
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, loading: authLoading, user } = useAuth()
+  const { isAuthenticated, loading, user } = useAuth()
   const router = useRouter()
-  const [dataSyncing, setDataSyncing] = useState(true)
+  const [dataLoaded, setDataLoaded] = useState(false)
 
-  // 1. مراقبة الدخول (بدون تداخل مع البيانات)
+  // 1. حماية المسار: لو مش مسجل يروح لوجن، لو مسجل يكمل
   useEffect(() => {
-    if (!authLoading && !isAuthenticated) {
+    if (!loading && !isAuthenticated) {
       router.push('/login')
     }
-  }, [isAuthenticated, authLoading, router])
+  }, [isAuthenticated, loading, router])
 
-  // 2. سحب البيانات من السحاب "مرة واحدة فقط" عند الدخول بنجاح
+  // 2. مزامنة البيانات الصامتة (بدون تعطيل الشاشة)
   useEffect(() => {
-    const downloadOnce = async () => {
+    const syncData = async () => {
       if (isAuthenticated && user?.uid) {
         try {
-          const docSnap = await getDoc(doc(db, "global_backup", user.uid))
-          if (docSnap.exists()) {
-            const cloudData = docSnap.data().data
-            Object.keys(cloudData).forEach(key => {
-              const val = typeof cloudData[key] === 'object' ? JSON.stringify(cloudData[key]) : cloudData[key]
+          // جلب البيانات من السحاب مرة واحدة عند الدخول
+          const snap = await getDoc(doc(db, "global_backup", user.uid))
+          if (snap.exists()) {
+            const data = snap.data().data
+            Object.keys(data).forEach(key => {
+              const val = typeof data[key] === 'object' ? JSON.stringify(data[key]) : data[key]
               localStorage.setItem(key, val)
             })
-            console.log("✅ البيانات استرجعت")
           }
-        } catch (e) { console.error(e) }
-        finally { setDataSyncing(false) }
+        } catch (e) { console.log("Cloud sync error (Safe to ignore)") }
+        finally { setDataLoaded(true) }
       }
     }
-    if (!authLoading && isAuthenticated) downloadOnce()
-    else if (!authLoading && !isAuthenticated) setDataSyncing(false)
-  }, [isAuthenticated, authLoading, user?.uid])
+    if (!loading && isAuthenticated) syncData()
+    else if (!loading) setDataLoaded(true)
+  }, [isAuthenticated, loading, user?.uid])
 
-  // 3. المزامنة التلقائية (الرفع للسحاب كل 10 ثوانٍ)
-  useEffect(() => {
-    const upload = async () => {
-      if (!isAuthenticated || !user?.uid) return
-      const allData: any = {}
-      for (let i = 0; i < localStorage.length; i++) {
-        const k = localStorage.key(i)
-        if (k) {
-          try { allData[k] = JSON.parse(localStorage.getItem(k) || "") }
-          catch { allData[k] = localStorage.getItem(k) }
-        }
-      }
-      if (Object.keys(allData).length > 0) {
-        await setDoc(doc(db, "global_backup", user.uid), { data: allData, lastUpdate: new Date() }, { merge: true })
-      }
-    }
-    const interval = setInterval(upload, 10000)
-    return () => clearInterval(interval)
-  }, [isAuthenticated, user?.uid])
-
-  // 🚧 منع الريندر لو لسه بيحمل الـ Auth أو الداتا
-  if (authLoading || (isAuthenticated && dataSyncing)) {
+  // شاشة تحميل خفيفة في البداية فقط
+  if (loading || !dataLoaded) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="flex flex-col items-center gap-4">
-          <div className="h-10 w-10 rounded-full border-4 border-teal-600 border-t-transparent animate-spin" />
-          <p className="text-sm font-bold">جاري تأمين الاتصال بالسحاب...</p>
-        </div>
+        <div className="h-8 w-8 border-4 border-teal-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
