@@ -23,6 +23,27 @@ import {
   Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog'
 
+// ─── Inline Switch Component (Turbopack-safe) ──────────
+function InlineSwitch({ checked, onCheckedChange }: { checked: boolean; onCheckedChange: () => void }) {
+  return (
+    <button 
+      type="button" 
+      onClick={onCheckedChange}
+      className={cn(
+        'inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background disabled:cursor-not-allowed disabled:opacity-50',
+        checked ? 'bg-teal-600' : 'bg-slate-300'
+      )}
+    >
+      <span
+        className={cn(
+          'pointer-events-none block h-4 w-4 rounded-full bg-white shadow-lg ring-0 transition-transform',
+          checked ? 'translate-x-4' : 'translate-x-0'
+        )}
+      />
+    </button>
+  )
+}
+
 // ─── Types ─────────────────────────────────────────────
 interface DashboardWidget {
   id: string
@@ -140,13 +161,11 @@ export default function DashboardConfigPage() {
                     <p className="text-[10px] text-slate-400">{WIDGET_TYPE_LABELS[widget.type]} • {SIZE_LABELS[widget.size]}</p>
                   </div>
                 </div>
-                {/* Custom Toggle Switch */}
-                <button 
-                  onClick={() => toggleVisibility(widget.id)}
-                  className={cn("w-10 h-5 rounded-full relative transition-colors", widget.isVisible ? "bg-teal-600" : "bg-slate-300")}
-                >
-                  <div className={cn("absolute top-1 w-3 h-3 bg-white rounded-full transition-all", widget.isVisible ? "right-6" : "right-1")} />
-                </button>
+                {/* Custom Inline Switch */}
+                <InlineSwitch 
+                  checked={widget.isVisible} 
+                  onCheckedChange={() => toggleVisibility(widget.id)} 
+                />
               </div>
               
               <div className="flex flex-wrap gap-1 mb-4 h-12 overflow-hidden items-start">
