@@ -12,46 +12,58 @@ import { doc, getDoc, setDoc } from 'firebase/firestore'
 export function DashboardLayout({ children }: { children: React.ReactNode }) {
   const { isAuthenticated, loading, user } = useAuth()
   const router = useRouter()
-  const [dataLoaded, setDataLoaded] = useState(false)
+  const [authChecked, setAuthChecked] = useState(false)
 
-  // 1. حماية المسار: لو مش مسجل يروح لوجن، لو مسجل يكمل
+  // 1. نظام التوجيه: لو مش مسجل دخول، ارميه لصفحة الـ /login فوراً
   useEffect(() => {
-    if (!loading && !isAuthenticated) {
-      router.push('/login')
+    if (!loading) {
+      if (!isAuthenticated) {
+        router.replace('/login') // يوديه للوجن لو ملوش صلاحية
+      } else {
+        setAuthChecked(true) // مسموح له يشوف الداشبورد
+      }
     }
   }, [isAuthenticated, loading, router])
 
-  // 2. مزامنة البيانات الصامتة (بدون تعطيل الشاشة)
+  // 2. المزامنة السحابية: بتبدأ فقط "بعد" التأكد من تسجيل الدخول
   useEffect(() => {
-    const syncData = async () => {
-      if (isAuthenticated && user?.uid) {
+    let interval: any;
+    if (isAuthenticated && user?.uid) {
+      const syncData = async () => {
         try {
-          // جلب البيانات من السحاب مرة واحدة عند الدخول
-          const snap = await getDoc(doc(db, "global_backup", user.uid))
+          // سحب البيانات المخزنة سابقاً للمستخدم
+          const snap = await getDoc(doc(db, "global_sync", user.uid))
           if (snap.exists()) {
-            const data = snap.data().data
-            Object.keys(data).forEach(key => {
-              const val = typeof data[key] === 'object' ? JSON.stringify(data[key]) : data[key]
-              localStorage.setItem(key, val)
-            })
+            const data = snap.data().payload
+            Object.keys(data).forEach(k => localStorage.setItem(k, typeof data[k] === 'object' ? JSON.stringify(data[k]) : data[k]))
           }
-        } catch (e) { console.log("Cloud sync error (Safe to ignore)") }
-        finally { setDataLoaded(true) }
-      }
-    }
-    if (!loading && isAuthenticated) syncData()
-    else if (!loading) setDataLoaded(true)
-  }, [isAuthenticated, loading, user?.uid])
+        } catch (e) { console.log("Sync pull skipped") }
 
-  // شاشة تحميل خفيفة في البداية فقط
-  if (loading || !dataLoaded) {
+        // رفع البيانات تلقائياً كل دقيقة لعدم إرهاق السيرفر
+        interval = setInterval(async () => {
+          const allLocal: any = {}
+          for (let i = 0; i < localStorage.length; i++) {
+            const k = localStorage.key(i)
+            if (k) try { allLocal[k] = JSON.parse(localStorage.getItem(k) || "") } catch { allLocal[k] = localStorage.getItem(k) }
+          }
+          await setDoc(doc(db, "global_sync", user.uid), { payload: allLocal, updatedAt: new Date() }, { merge: true })
+        }, 60000)
+      }
+      syncData()
+    }
+    return () => clearInterval(interval)
+  }, [isAuthenticated, user?.uid])
+
+  // شاشة تحميل بسيطة جداً بتظهر ثانية واحدة بس لحد ما يتأكد إنت مين
+  if (loading || (!isAuthenticated && !authChecked)) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <div className="h-8 w-8 border-4 border-teal-600 border-t-transparent rounded-full animate-spin" />
+      <div className="min-h-screen flex items-center justify-center bg-white">
+        <div className="h-10 w-10 border-4 border-teal-600 border-t-transparent rounded-full animate-spin" />
       </div>
     )
   }
 
+  // لو مش مسجل، الكود اللي فوق هيعمل redirect ومش هيوصل لهنا أصلاً
   if (!isAuthenticated) return null
 
   return (
@@ -59,7 +71,9 @@ export function DashboardLayout({ children }: { children: React.ReactNode }) {
       <AppSidebar />
       <SidebarInset>
         <Topbar />
-        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
+        <main className="flex-1 overflow-auto p-4 md:p-6">
+          {children}
+        </main>
       </SidebarInset>
     </SidebarProvider>
   )
